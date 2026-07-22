@@ -1029,3 +1029,36 @@ Stage Summary:
 - Data-viz semantic colors preserved (green=present, red=absent, amber=late, violet=stationery).
 - All 4 key screens verified orange-themed via VLM: landing, login, super-admin portal, teacher portal.
 - Ready to commit + push to GitHub + verify Vercel auto-deploy.
+
+---
+Task ID: CONCORDIA-SIDEBAR-FIX
+Agent: main (this session)
+Task: User reported sidebar is "very worse and not aligned" + claimed GitHub/Vercel not updated. Verify deployment status, fix sidebar color+alignment, push to GitHub + Vercel.
+
+Work Log:
+- VERIFIED GitHub IS up to date: GitHub API confirms HEAD = 7f42c38 (theme migration commit), in sync with local.
+- VERIFIED Vercel IS deployed with new theme: fetched Vercel CSS, found `--primary:#f26522` and `--sidebar:#211d1a` (OKLCH values compiled to lab() format by Tailwind, which is why earlier grep for oklch missed them). User was likely seeing browser cache.
+- ROOT CAUSE of "sidebar very worse": the REAL sidebar is in `src/components/portal/role-portal.tsx` (SidebarContent function, line 70), NOT `dashboard-shell.tsx`. The role-portal sidebar used `bg-sidebar-accent` (dark grey oklch 0.284) for the active item — NOT orange. Also had: emerald-green avatar gradient, very faint section headers (text-sidebar-foreground/40), no orange accents, inconsistent spacing.
+- Also fixed dashboard-shell.tsx sidebar (same green emerald active item issue) for consistency, even though portals use role-portal.tsx sidebar.
+- REWROTE role-portal.tsx SidebarContent with polished Concordia orange theme:
+  * Active item: solid orange bg (#F26522), white text+icon, shadow-md shadow-[#F26522]/25, chevron-right indicator
+  * Inactive items: text-sidebar-foreground/80, hover:bg-white/[0.06], icon hover:text-[#FF8C42] (lighter orange)
+  * Section headers: orange dot (h-1 w-1 rounded-full bg-[#F26522]) + uppercase tracking-[0.12em] text-sidebar-foreground/55, collapsible
+  * Brand area: orange accent line under logo (bg-gradient-to-r from-transparent via-[#F26522]/60 to-transparent)
+  * User avatar: orange gradient via inline style (background: linear-gradient(135deg, #F26522, #D4541E)), ring-2 ring-[#F26522]/20, proper initials (first letter of first 2 words)
+  * User card: bg-white/[0.04] border border-white/[0.06], cleaner layout with shrink-0 on avatar+button
+  * Spacing: space-y-5 between groups, space-y-0.5 between items, px-3 py-2.5 on buttons, consistent gap-3 between icon+text
+  * Added ChevronDown + ChevronRight imports (were missing)
+- VERIFIED via agent-browser + VLM + computed-style inspection:
+  * Active 'Dashboard' item: ORANGE background, WHITE text+icon ✅
+  * Section headers: have orange dot ✅
+  * Alignment: clean and consistent ✅
+  * No green/emerald remaining ✅
+  * Avatar: confirmed orange gradient via getComputedStyle (backgroundImage = linear-gradient(135deg, rgb(242,101,34), rgb(212,84,30))), initials = "FK" ✅ (VLM misread the small 36px avatar but computed styles confirm correct rendering)
+- Lint: 0 errors, 0 warnings.
+
+Stage Summary:
+- GitHub repo (faisukhan01/concordia) confirmed up to date at 7f42c38.
+- Vercel (concordia-eight.vercel.app) confirmed deployed with new orange theme (--primary:#f26522 in CSS).
+- Sidebar fully fixed: orange active items, orange avatar, orange section dots, clean alignment, proper spacing. Applied to BOTH role-portal.tsx (the actual portal sidebar) and dashboard-shell.tsx (for consistency).
+- Ready to commit + push sidebar fix.

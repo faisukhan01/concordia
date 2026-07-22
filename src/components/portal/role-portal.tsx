@@ -13,6 +13,7 @@ import {
   GraduationCap, Search, Bell, Menu, LogOut,
   PanelLeftClose, PanelLeft, Crown, Building2, Users, BookOpen, User, Shield,
   CheckCircle2, AlertCircle, Receipt, Award, CalendarCheck, X, Moon, Sun,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
@@ -72,70 +73,94 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
   const accent = roleAccent[role];
   const RoleIcon = roleIcon[role] || GraduationCap;
   return (
-    <div className="flex flex-col h-full text-sidebar-foreground">
-      <div className={cn('flex items-center gap-2.5 px-4 h-14 border-b border-sidebar-border shrink-0', collapsed && 'justify-center px-2')}>
+    <div className="flex flex-col h-full text-sidebar-foreground bg-sidebar">
+      {/* brand — fixed height with orange accent line */}
+      <div className={cn('relative flex items-center h-14 border-b border-sidebar-border shrink-0', collapsed ? 'justify-center px-2' : 'px-4 gap-2.5')}>
         {collapsed ? (
           <BrandLogo size="xs" variant="light" />
         ) : (
           <BrandLogo size="sm" variant="light" />
         )}
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#F26522]/60 to-transparent" />
       </div>
 
-      <nav className="flex-1 overflow-y-auto scroll-fancy px-2 py-3 space-y-0.5">
-        {groups.map((group: any) => {
-          const isOpen = groupOpen[group.group];
-          return (
-            <div key={group.group} className="mb-2">
-              {!collapsed && (
-                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-                  {group.group}
+      <nav className="flex-1 overflow-y-auto scroll-fancy px-3 py-4">
+        <div className="space-y-5">
+          {groups.map((group: any) => {
+            const isOpen = groupOpen[group.group];
+            return (
+              <div key={group.group}>
+                {!collapsed && (
+                  <button
+                    onClick={() => setGroupOpen((g: any) => ({ ...g, [group.group]: !g[group.group] }))}
+                    className="w-full flex items-center justify-between px-3 mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-sidebar-foreground/55 hover:text-sidebar-foreground/85 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-[#F26522]" />
+                      {group.group}
+                    </span>
+                    {isOpen !== undefined && (
+                      <ChevronDown className={cn('h-3 w-3 transition-transform', !isOpen && '-rotate-90')} />
+                    )}
+                  </button>
+                )}
+                <div className={cn(!isOpen && !collapsed && 'hidden')}>
+                  <div className="space-y-0.5">
+                    {group.items.map((m: any) => {
+                      const isActive = activeModule === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => { setActiveModule(m.id); setMobileOpen(false); }}
+                          title={collapsed ? m.name : undefined}
+                          className={cn(
+                            'group relative w-full flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-150',
+                            collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+                            isActive
+                              ? 'bg-[#F26522] text-white shadow-md shadow-[#F26522]/25'
+                              : 'text-sidebar-foreground/80 hover:bg-white/[0.06] hover:text-white'
+                          )}
+                        >
+                          <m.icon className={cn(
+                            'h-[18px] w-[18px] shrink-0 transition-colors',
+                            isActive ? 'text-white' : 'text-sidebar-foreground/60 group-hover:text-[#FF8C42]'
+                          )} />
+                          {!collapsed && <span className="truncate flex-1 text-left">{m.name}</span>}
+                          {!collapsed && isActive && (
+                            <ChevronRight className="h-3.5 w-3.5 text-white/80 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-              <div className={cn(!isOpen && !collapsed && 'hidden')}>
-                {group.items.map((m: any) => {
-                  const isActive = activeModule === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => { setActiveModule(m.id); setMobileOpen(false); }}
-                      title={collapsed ? m.name : undefined}
-                      className={cn(
-                        'group relative w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition',
-                        collapsed && 'justify-center',
-                        isActive
-                          ? 'bg-sidebar-accent text-white font-medium'
-                          : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-white'
-                      )}
-                    >
-                      <m.icon className="h-[18px] w-[18px] shrink-0" />
-                      {!collapsed && <span className="truncate">{m.name}</span>}
-                    </button>
-                  );
-                })}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </nav>
 
       <div className="border-t border-sidebar-border p-3 shrink-0">
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-sidebar-accent text-white text-xs font-medium">
-                {user?.name?.slice(0, 2).toUpperCase() || 'U'}
+          <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] p-2.5">
+            <Avatar className="h-9 w-9 shrink-0 ring-2 ring-[#F26522]/20">
+              <AvatarFallback
+                className="text-white text-xs font-bold"
+                style={{ background: 'linear-gradient(135deg, #F26522 0%, #D4541E 100%)' }}
+              >
+                {(user?.name || 'Admin').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-white truncate">{user?.name || 'User'}</div>
-              <div className="text-[10px] text-sidebar-foreground/60 truncate">{user?.roleLabel}</div>
+              <div className="text-xs font-semibold text-white truncate">{user?.name || 'User'}</div>
+              <div className="text-[10px] text-sidebar-foreground/55 truncate">{user?.roleLabel}</div>
             </div>
-            <button onClick={logout} title="Sign out" className="h-7 w-7 grid place-items-center rounded-md text-sidebar-foreground/60 hover:text-rose-400 hover:bg-rose-500/20 transition">
+            <button onClick={logout} title="Sign out" className="h-8 w-8 grid place-items-center rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-rose-500/20 transition-colors shrink-0">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         ) : (
-          <button onClick={logout} title="Sign out" className="w-full h-9 grid place-items-center rounded-lg text-sidebar-foreground/70 hover:text-rose-400 hover:bg-rose-500/20 transition">
+          <button onClick={logout} title="Sign out" className="w-full h-10 grid place-items-center rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-rose-500/20 transition-colors">
             <LogOut className="h-4 w-4" />
           </button>
         )}
