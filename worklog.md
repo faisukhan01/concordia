@@ -1182,3 +1182,27 @@ Stage Summary:
 - Old institute-admin/branch-manager portals PERMANENTLY removed — their credentials can no longer sign in
 - All 4 office portals (admin/admissions/accountant/academic) redesigned with clean, natural, pro-developer aesthetic
 - Ready for agent-browser QA + GitHub push + Vercel verification
+
+---
+Task ID: LOGIN-REDESIGN-ADMIN-DROPDOWNS
+Agent: Z.ai Code (main)
+Task: Redesign sign-in page (UCP-style: full-page campus image, white form card on left, demo panel on right without Super Admin) + restructure admin portal sidebar with dropdown entries for each subordinate role (Admission Office, Accountant, Academic Office, Teacher, Student, Parent)
+
+Work Log:
+- Read /home/z/my-project/worklog.md to understand previous work (clean non-agentic portals, light sidebar, legacy role blocking).
+- Analyzed the UCP login reference image via VLM: form on LEFT, campus image visible, clean white card, two fields + button.
+- Fixed src/lib/server/db.ts: added fallback to local SQLite (DATABASE_URL=file:./db/custom.db) when TURSO_* env vars are missing — dev server was returning 500 on all API calls because Turso credentials weren't in the environment. Now dev uses local SQLite; production (Vercel) uses Turso env vars.
+- Rewrote src/components/auth/login-page.tsx: full-page campus photograph (bg-cover bg-center) covering entire viewport with a subtle left-to-right gradient (from-black/70 via-black/25 to-transparent) for card contrast + bottom vignette for copyright text. LEFT: clean white card (bg-white/95 backdrop-blur-xl shadow-2xl) with logo + "Sign in" heading + username field + password field + single orange "Login" button. RIGHT: glassmorphism demo panel (bg-white/10 backdrop-blur-md) with "DEMO ONLY · REMOVABLE" badge, 4 accounts (Admin, Admission Office, Accountant, Academic Office — NO Super Admin), click-to-fill, "Teacher & Student logins created by Academic Office" note.
+- Updated src/lib/role-modules.ts admin role: restructured with dropdown groups for ALL six subordinate roles (Admission Office, Accountant, Academic Office, Teacher, Student, Parent). Each sub-portal module uses a namespaced ID format `role:moduleId` (e.g. `admissions:admissions-new`, `teacher:timetable`, `student:my-results`) to avoid collisions on shared IDs like `timetable`, `announcements`, `complaint-portal`, `e-learning`, `exam-portal`, `results`, `report-cards`.
+- Updated src/components/portal/admin-portal.tsx: imported AdmissionsPortal, AccountantPortal, AcademicPortal, TeacherPortal, StudentPortal, ParentPortal. Main router now checks if activeModule contains ':' — if so, splits on ':' to get namespace + moduleId, then delegates to the corresponding sub-portal component with the de-namespaced module ID. This gives admin the EXACT same UI as each dedicated role portal (zero code duplication).
+- Updated src/components/portal/role-portal.tsx: (1) groupOpen initialization now collapses sub-portal groups (Admission Office, Accountant, Academic Office, Teacher, Student, Parent) by default for the admin role — keeps sidebar clean. (2) Added useEffect that auto-expands the group containing the active module whenever activeModule changes — so navigating to a sub-portal module (via command palette or direct click) auto-opens its dropdown.
+- Ran `bun run lint` — passed clean, 0 errors.
+- Tested via agent-browser: (1) Login page renders with full-page campus image, white form card on left, demo panel on right — VLM confirmed "very professional and polished". (2) Logged in as admin@concordia.edu.pk — admin portal loads. (3) Sidebar shows all dropdown groups (Overview, People, Admission Office, Accountant, Academic Office, Teacher, Student, Parent, Reports & Events, Account) with sub-portal groups collapsed by default. (4) Clicked "Admission Office" dropdown → expanded to show Dashboard, New Enrollment, Student Records, Base Fee Finalization. (5) Clicked "New Enrollment" → AdmissionsPortal's enrollment form renders correctly inside admin portal (Student Name, Father's Name, CNIC, DOB, base fee info). (6) Clicked "Accountant" dropdown → "Collect Payment" → AccountantPortal's payment collection page renders correctly (student search + selection + step-by-step payment flow). All sub-portal delegation works.
+- Git commit + force-with-lease push to github.com/faisukhan01/concordia main branch (commit 7c15dc7). Vercel auto-deploys from main.
+
+Stage Summary:
+- Login page: UCP-inspired, full-page campus image, clean white form card on LEFT, demo panel on RIGHT (no Super Admin, marked ephemeral). Professional and polished.
+- Admin portal: sidebar has dropdown groups for every subordinate role. Clicking a role expands its modules. Clicking a module renders the EXACT dedicated portal view via component delegation with namespaced module IDs.
+- DB: local SQLite fallback ensures dev works without Turso credentials; production uses Turso env vars on Vercel.
+- GitHub: pushed to main (7c15dc7). Vercel deployment triggered automatically.
+- No lint errors, no runtime errors in dev.log.
