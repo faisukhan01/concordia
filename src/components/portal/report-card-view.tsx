@@ -155,7 +155,7 @@ export function ReportCardDocument({ report, instituteName }: { report: ReportCa
 function gradeHexStyle(g: string | undefined): string {
   const x = String(g || '').toUpperCase();
   if (x === 'A+' || x === 'A') return 'color:#047857;background:#d1fae5;border-color:#6ee7b7;';
-  if (x === 'B') return 'color:#1e3a5f;background:#e0e7ef;border-color:#b6c5d8;';
+  if (x === 'B') return 'color:#F26522;background:#FFF7ED;border-color:#FDBA74;';
   if (x === 'C') return 'color:#b45309;background:#fef3c7;border-color:#fcd34d;';
   if (x === 'D') return 'color:#6b7280;background:#f3f4f6;border-color:#d1d5db;';
   if (x === 'F') return 'color:#991b1b;background:#fee2e2;border-color:#fca5a5;';
@@ -192,8 +192,8 @@ export function buildReportCardHTML(report: ReportCardData, instituteName?: stri
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 24px; background: #ffffff; color: #1f2937; }
-  .rc { max-width: 760px; margin: 0 auto; background: #fff; border: 2px solid #1e3a5f; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); overflow: hidden; }
-  .banner { background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); color: #fff; padding: 22px 28px; }
+  .rc { max-width: 760px; margin: 0 auto; background: #fff; border: 2px solid #F26522; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); overflow: hidden; }
+  .banner { background: linear-gradient(135deg, #F26522 0%, #FF8C42 100%); color: #fff; padding: 22px 28px; }
   .inst { font-size: 26px; font-weight: 900; letter-spacing: 0.5px; margin: 0; line-height: 1.1; }
   .ttl { font-size: 12px; color: #c3d4e8; margin-top: 6px; letter-spacing: 3px; font-weight: 700; }
   .info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 24px; padding: 18px 28px; border-bottom: 2px dashed #b6c5d8; }
@@ -201,22 +201,22 @@ export function buildReportCardHTML(report: ReportCardData, instituteName?: stri
   .val { font-size: 14px; font-weight: 700; color: #111827; }
   table { width: calc(100% - 56px); margin: 18px 28px; border-collapse: collapse; }
   th, td { padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #e5e7eb; }
-  th { background: #f3f4f6; color: #1e3a5f; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+  th { background: #f3f4f6; color: #1a1a1a; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
   tr:nth-child(even) td { background: #fafbfc; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid; }
   .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 28px 18px; }
   .sum-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; background: #fff; }
   .sum-lbl { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
-  .sum-val { font-size: 20px; font-weight: 800; color: #0f1e3a; margin-top: 4px; }
+  .sum-val { font-size: 20px; font-weight: 800; color: #D4541E; margin-top: 4px; }
   .remarks { margin: 0 28px 18px; padding: 14px 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; }
   .rem-lbl { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
   .rem-txt { font-size: 13px; color: #111827; }
   .gen { font-size: 10px; color: #9ca3af; text-align: right; padding: 6px 28px 0; }
   .footer { text-align: center; padding: 12px 28px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280; font-weight: 600; }
-  .footer-brand { color: #1e3a5f; font-weight: 800; }
+  .footer-brand { color: #F26522; font-weight: 800; }
   @media print {
     body { padding: 0; background: #fff; }
-    .rc { box-shadow: none; border: 2px solid #1e3a5f; }
+    .rc { box-shadow: none; border: 2px solid #F26522; }
   }
 </style></head>
 <body>
@@ -246,7 +246,7 @@ export function buildReportCardHTML(report: ReportCardData, instituteName?: stri
     </table>
     <div class="summary">
       <div class="sum-card"><div class="sum-lbl">Total Marks</div><div class="sum-val">${report.totalMarks ?? 0}</div></div>
-      <div class="sum-card"><div class="sum-lbl">Obtained</div><div class="sum-val" style="color:#1e3a5f">${report.obtainedMarks ?? 0}</div></div>
+      <div class="sum-card"><div class="sum-lbl">Obtained</div><div class="sum-val" style="color:#F26522">${report.obtainedMarks ?? 0}</div></div>
       <div class="sum-card"><div class="sum-lbl">Percentage</div><div class="sum-val">${report.percentage ?? 0}%</div></div>
       <div class="sum-card"><div class="sum-lbl">Overall Grade</div><div class="sum-val"><span class="badge" style="${gradeHexStyle(report.grade)}">${esc(report.grade)}</span></div></div>
     </div>

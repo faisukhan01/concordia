@@ -767,15 +767,15 @@ function TeacherDashboard({ user, students, diary, myResults, classes, onOpenCla
               <AreaChart data={trend} margin={{ top: 5, right: 12, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="attTrendGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1a365d" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#1a365d" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#F26522" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#F26522" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
                 <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} width={40} unit="%" />
                 <ChartTooltip content={<AttendanceTooltip />} />
-                <Area type="monotone" dataKey="rate" stroke="#1a365d" strokeWidth={2.5} fill="url(#attTrendGrad)" dot={{ r: 3, fill: '#1a365d' }} activeDot={{ r: 5 }} />
+                <Area type="monotone" dataKey="rate" stroke="#F26522" strokeWidth={2.5} fill="url(#attTrendGrad)" dot={{ r: 3, fill: '#F26522' }} activeDot={{ r: 5 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

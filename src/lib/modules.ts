@@ -50,7 +50,7 @@ export const MODULES: ModuleDef[] = [
   // --- PGC parity: E-Learning Hub ---
   { id: 'e-learning', name: 'E-Learning Hub', short: 'E-Learning', icon: Video, group: 'Academics', color: 'from-violet-500 to-fuchsia-600', tagline: '4,000+ video lectures, past papers & MCQ practice', features: ['Video lecture library', 'Past paper database', 'MCQ practice engine', 'Progress tracking', 'Performance analytics', 'Subject-wise filters'] },
   // --- PGC parity: Exam Portal ---
-  { id: 'exam-portal', name: 'Exam Portal', short: 'Exams', icon: FileCheck, group: 'Academics', color: 'from-indigo-500 to-blue-600', tagline: 'Practice tests, upcoming exams & performance analytics', features: ['Upcoming exam schedule', 'Create practice tests', 'Past results & trends', 'Performance analytics', 'Answer key review', 'Countdown timer'] },
+  { id: 'exam-portal', name: 'Exam Portal', short: 'Exams', icon: FileCheck, group: 'Academics', color: 'from-[#FF8C42] to-[#F26522]', tagline: 'Practice tests, upcoming exams & performance analytics', features: ['Upcoming exam schedule', 'Create practice tests', 'Past results & trends', 'Performance analytics', 'Answer key review', 'Countdown timer'] },
   // --- PGC parity: Complaint Portal ---
   { id: 'complaint-portal', name: 'Complaint Portal', short: 'Complaints', icon: AlertTriangle, group: 'Communication', color: 'from-rose-500 to-orange-600', tagline: 'Bilingual complaint tracking with two-way chat', features: ['Submit complaints', 'Two-way chat', 'Priority routing', 'Resolution timeline', 'Star rating feedback', 'Anonymous option'] },
 ];

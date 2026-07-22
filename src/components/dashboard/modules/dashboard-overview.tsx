@@ -29,10 +29,10 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
   }, []);
 
   const kpis = [
-    { label: 'Total Students', value: stats?.totalStudents?.toLocaleString() || '—', icon: Users, trend: stats?.enrollmentTrend, color: 'from-blue-600 to-blue-800', accent: 'text-blue-700' },
-    { label: 'Attendance Today', value: stats ? stats.attendanceToday + '%' : '—', icon: CalendarCheck, trend: '+1.2%', color: 'from-blue-500 to-blue-700', accent: 'text-blue-700' },
-    { label: 'Fee Collected (mo)', value: stats ? fmtMoney(stats.feeCollected) : '—', icon: DollarSign, trend: stats?.revenueTrend, color: 'from-blue-500 to-blue-700', accent: 'text-blue-700' },
-    { label: 'Average GPA', value: stats?.avgGPA?.toFixed(2) || '—', icon: GraduationCap, trend: '+0.08', color: 'from-blue-600 to-blue-800', accent: 'text-blue-700' },
+    { label: 'Total Students', value: stats?.totalStudents?.toLocaleString() || '—', icon: Users, trend: stats?.enrollmentTrend, color: 'from-[#F26522] to-[#D4541E]', accent: 'text-[#F26522]' },
+    { label: 'Attendance Today', value: stats ? stats.attendanceToday + '%' : '—', icon: CalendarCheck, trend: '+1.2%', color: 'from-[#FF8C42] to-[#F26522]', accent: 'text-[#F26522]' },
+    { label: 'Fee Collected (mo)', value: stats ? fmtMoney(stats.feeCollected) : '—', icon: DollarSign, trend: stats?.revenueTrend, color: 'from-[#FF8C42] to-[#F26522]', accent: 'text-[#F26522]' },
+    { label: 'Average GPA', value: stats?.avgGPA?.toFixed(2) || '—', icon: GraduationCap, trend: '+0.08', color: 'from-[#F26522] to-[#D4541E]', accent: 'text-[#F26522]' },
   ];
 
   const quickStats = [
@@ -45,9 +45,9 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
   ];
 
   const pieData = [
-    { name: 'Present', value: 1142, color: '#1a365d' },
+    { name: 'Present', value: 1142, color: '#10b981' },
     { name: 'Absent', value: 58, color: '#f43f5e' },
-    { name: 'Late', value: 48, color: '#3b82f6' },
+    { name: 'Late', value: 48, color: '#f59e0b' },
   ];
 
   return (
@@ -56,22 +56,22 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-800 via-blue-900 to-blue-950 p-6 sm:p-8 text-white"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#F26522] via-[#D4541E] to-[#1a1a1a] p-6 sm:p-8 text-white"
       >
         <div className="absolute inset-0 bg-grid-dark opacity-25" />
-        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-blue-400/15 blur-3xl" />
+        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-[#F26522]/15 blur-3xl" />
         <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] mb-3 border border-white/15">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-300 animate-pulse" /> Live · Spring Semester 2025
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF8C42] animate-pulse" /> Live · Spring Semester 2025
             </div>
             <h1 className="font-display text-2xl sm:text-3xl font-extrabold">Good morning, Administrator</h1>
-            <p className="text-blue-50/80 text-sm mt-1.5 max-w-lg">
+            <p className="text-white/80 text-sm mt-1.5 max-w-lg">
               Here's what's happening across your campus today. {stats?.totalStudents.toLocaleString()} students, {stats?.totalStaff} staff, and {stats?.attendanceToday}% attendance.
             </p>
           </div>
           <div className="flex gap-2">
-            <Button className="bg-white text-blue-800 hover:bg-blue-50" size="sm">
+            <Button className="bg-white text-[#F26522] hover:bg-orange-50" size="sm">
               <Bell className="h-4 w-4 mr-1.5" /> Send Alert
             </Button>
             <Button variant="outline" className="border-white/30 text-white hover:bg-white/10" size="sm">
@@ -113,7 +113,7 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
               <h3 className="font-bold text-base">Attendance — last 30 days</h3>
               <p className="text-xs text-muted-foreground">Daily present, absent & late counts</p>
             </div>
-            <Badge variant="outline" className="gap-1 text-blue-700 border-blue-500/30">
+            <Badge variant="outline" className="gap-1 text-[#F26522] border-[#F26522]/30">
               <TrendingUp className="h-3 w-3" /> {stats?.attendanceToday}% today
             </Badge>
           </div>
@@ -121,8 +121,8 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
             <AreaChart data={attendance} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
               <defs>
                 <linearGradient id="gP" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#1a365d" stopOpacity={0.5} />
-                  <stop offset="100%" stopColor="#1a365d" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#F26522" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="#F26522" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.4} />
@@ -133,7 +133,7 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
               <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" interval={5} tickFormatter={d => d.slice(5)} />
               <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
               <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
-              <Area type="monotone" dataKey="present" stroke="#1a365d" strokeWidth={2} fill="url(#gP)" />
+              <Area type="monotone" dataKey="present" stroke="#F26522" strokeWidth={2} fill="url(#gP)" />
               <Area type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={2} fill="url(#gA)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -177,8 +177,8 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
               <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
               <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickFormatter={v => '$' + (v/1000) + 'k'} />
               <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12 }} formatter={(v: any) => fmtMoney(v)} />
-              <Bar dataKey="collected" stackId="a" fill="#1a365d" radius={[0,0,0,0]} />
-              <Bar dataKey="pending" stackId="a" fill="#3b82f6" radius={[0,0,0,0]} />
+              <Bar dataKey="collected" stackId="a" fill="#F26522" radius={[0,0,0,0]} />
+              <Bar dataKey="pending" stackId="a" fill="#FF8C42" radius={[0,0,0,0]} />
               <Bar dataKey="overdue" stackId="a" fill="#f43f5e" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -197,7 +197,7 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
               <XAxis type="number" domain={[0,100]} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
               <YAxis type="category" dataKey="subject" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" width={90} />
               <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12 }} />
-              <Bar dataKey="avgScore" fill="#1a365d" radius={[0,4,4,0]} />
+              <Bar dataKey="avgScore" fill="#F26522" radius={[0,4,4,0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -208,7 +208,7 @@ export function DashboardOverview({ stats }: { stats: Stats | null }) {
         {quickStats.map((q, i) => (
           <motion.div key={q.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
             <Card className="p-4 hover:shadow-md transition">
-              <q.icon className="h-5 w-5 text-blue-700 mb-2" />
+              <q.icon className="h-5 w-5 text-[#F26522] mb-2" />
               <div className="text-xl font-extrabold font-display">{q.value}</div>
               <div className="text-[11px] text-muted-foreground">{q.label}</div>
             </Card>

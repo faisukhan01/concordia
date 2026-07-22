@@ -167,8 +167,8 @@ const ATTENDANCE_VALUE: Record<string, number> = {
   Absent: 1,
 };
 const GRADE_COLORS: Record<string, string> = {
-  'A+': '#1a365d',
-  'A': '#2c5282',
+  'A+': '#F26522',
+  'A': '#FF8C42',
   'B': '#3182ce',
   'C': '#4299e1',
   'D': '#63b3ed',
@@ -796,7 +796,7 @@ function buildChallanHTML(challan: any, instituteName?: string): string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; background: #ffffff; color: #1f2937; padding: 20px; }
   .challan { max-width: 680px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-  .top-bar { background: #1a365d; color: #fff; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .top-bar { background: #F26522; color: #fff; padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
   .top-bar .inst { font-size: 22px; font-weight: 700; }
   .top-bar .inst-sub { font-size: 10px; color: #a0aec0; margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
   .top-bar .challan-title { text-align: right; }
@@ -809,7 +809,7 @@ function buildChallanHTML(challan: any, instituteName?: string): string {
   .info-value { font-size: 13px; font-weight: 600; color: #111827; text-align: right; flex: 1; }
   .amount-box { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 20px; margin: 24px 0; display: flex; justify-content: space-between; align-items: center; }
   .amount-box .lbl { font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .amount-box .val { font-size: 24px; font-weight: 800; color: #1a365d; }
+  .amount-box .val { font-size: 24px; font-weight: 800; color: #F26522; }
   .status-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
   .badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
   .badge-paid { background: #d1fae5; color: #065f46; }
@@ -819,7 +819,7 @@ function buildChallanHTML(challan: any, instituteName?: string): string {
   .sig-line { width: 200px; height: 1px; background: #d1d5db; margin: 0 auto 6px; }
   .sig-label { font-size: 11px; color: #6b7280; }
   .footer { background: #f9fafb; padding: 12px 32px; text-align: center; font-size: 11px; color: #6b7280; border-top: 1px solid #e5e7eb; }
-  .footer strong { color: #1a365d; }
+  .footer strong { color: #F26522; }
 </style>
 </head>
 <body>

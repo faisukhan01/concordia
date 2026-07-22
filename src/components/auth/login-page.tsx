@@ -64,14 +64,14 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[#0a1628]">
+    <div className="relative min-h-screen w-full overflow-hidden bg-[#1a1a1a]">
       {/* ─── Background: campus hero image ─── */}
       <div
         className="absolute inset-0 bg-cover bg-center scale-105"
         style={{ backgroundImage: 'url(/campus-hero.jpg)' }}
       />
-      {/* Dark overlay for text contrast on the image side */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+      {/* Warm orange-tinted overlay for text contrast on the image side */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-[#F26522]/20" />
 
       {/* ─── Home button ─── */}
       <button
@@ -91,9 +91,9 @@ export function LoginPage() {
             transition={{ duration: 0.7, ease: [0.4, 0, 0.2, 1] }}
             className="relative"
           >
-            {/* Diagonal slant accent — decorative top border */}
+            {/* Diagonal slant accent — decorative top border in Concordia orange */}
             <div
-              className="absolute -top-px -left-6 -right-6 h-1.5 bg-gradient-to-r from-transparent via-[#1a365d] to-transparent"
+              className="absolute -top-px -left-6 -right-6 h-1.5 bg-gradient-to-r from-transparent via-[#F26522] to-transparent"
               style={{ clipPath: 'polygon(8% 0, 100% 0, 92% 100%, 0 100%)' }}
             />
 
@@ -116,7 +116,7 @@ export function LoginPage() {
                 transition={{ delay: 0.3, duration: 0.5 }}
                 className="text-center mb-7"
               >
-                <h1 className="text-2xl font-bold text-[#0f1e3a] tracking-tight">Sign in to your account</h1>
+                <h1 className="text-2xl font-bold text-[#1a1a1a] tracking-tight">Sign in to your account</h1>
                 <p className="text-sm text-gray-500 mt-1.5">
                   Enter your credentials — we&apos;ll take you to the right portal.
                 </p>
@@ -145,7 +145,7 @@ export function LoginPage() {
                     onChange={e => setEmail(e.target.value)}
                     autoComplete="username"
                     placeholder="Email or ID"
-                    className="w-full h-12 pl-11 pr-4 rounded-xl border border-gray-200 bg-gray-50/80 text-gray-800 text-sm outline-none transition-all focus:border-[#1a365d] focus:bg-white focus:ring-2 focus:ring-[#1a365d]/10 placeholder:text-gray-400"
+                    className="w-full h-12 pl-11 pr-4 rounded-xl border border-orange-100 bg-orange-50/40 text-gray-800 text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
                   />
                 </div>
 
@@ -161,7 +161,7 @@ export function LoginPage() {
                     onChange={e => setPassword(e.target.value)}
                     autoComplete="current-password"
                     placeholder="Password"
-                    className="w-full h-12 pl-11 pr-11 rounded-xl border border-gray-200 bg-gray-50/80 text-gray-800 text-sm outline-none transition-all focus:border-[#1a365d] focus:bg-white focus:ring-2 focus:ring-[#1a365d]/10 placeholder:text-gray-400"
+                    className="w-full h-12 pl-11 pr-11 rounded-xl border border-orange-100 bg-orange-50/40 text-gray-800 text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
                   />
                   <button
                     type="button"
@@ -181,7 +181,7 @@ export function LoginPage() {
                       onClick={() => setRemember(r => !r)}
                       className={`h-4 w-4 rounded border flex items-center justify-center transition-all ${
                         remember
-                          ? 'bg-[#1a365d] border-[#1a365d]'
+                          ? 'bg-[#F26522] border-[#F26522]'
                           : 'bg-white border-gray-300 group-hover:border-gray-400'
                       }`}
                       aria-label="Remember me"
@@ -196,7 +196,7 @@ export function LoginPage() {
                   </label>
                   <button
                     type="button"
-                    className="text-[#1a365d] hover:text-[#0f1e3a] font-medium transition-colors"
+                    className="text-[#F26522] hover:text-[#D4541E] font-medium transition-colors"
                   >
                     Forgot password?
                   </button>
@@ -207,7 +207,7 @@ export function LoginPage() {
                   type="submit"
                   disabled={isLoading}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full h-12 rounded-xl bg-gradient-to-r from-[#1a365d] to-[#0f1e3a] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#1a365d]/25 hover:shadow-xl hover:shadow-[#1a365d]/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed mt-1"
+                  className="w-full h-12 rounded-xl bg-gradient-to-r from-[#F26522] to-[#D4541E] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#F26522]/30 hover:shadow-xl hover:shadow-[#F26522]/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed mt-1"
                 >
                   {isLoading ? (
                     <>
@@ -225,11 +225,11 @@ export function LoginPage() {
 
               {/* Divider */}
               <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-[11px] uppercase tracking-wider text-gray-400 font-medium">
+                <div className="flex-1 h-px bg-orange-100" />
+                <span className="text-[11px] uppercase tracking-wider text-[#F26522] font-semibold">
                   Secure Access
                 </span>
-                <div className="flex-1 h-px bg-gray-200" />
+                <div className="flex-1 h-px bg-orange-100" />
               </div>
 
               {/* Trust badges — all 5 roles auto-detected */}
@@ -243,9 +243,9 @@ export function LoginPage() {
                 ].map(r => (
                   <div
                     key={r.label}
-                    className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-gray-50/60 border border-gray-100"
+                    className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-orange-50/60 border border-orange-100"
                   >
-                    <r.icon className="h-3.5 w-3.5 text-[#1a365d]" />
+                    <r.icon className="h-3.5 w-3.5 text-[#F26522]" />
                     <span className="text-[9px] font-medium text-gray-500 text-center leading-tight">
                       {r.label}
                     </span>
@@ -270,11 +270,11 @@ export function LoginPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.5, duration: 0.8 }}
           >
-            <div className="h-0.5 w-12 bg-white/40 mb-4" />
+            <div className="h-0.5 w-12 bg-[#F26522] mb-4" />
             <h2 className="text-3xl lg:text-4xl font-bold text-white leading-tight drop-shadow-lg">
               Excellence in Education
             </h2>
-            <p className="text-white/80 mt-3 text-sm lg:text-base drop-shadow">
+            <p className="text-white/85 mt-3 text-sm lg:text-base drop-shadow">
               A unified management portal for administration, staff, teachers, and students —
               all in one place.
             </p>

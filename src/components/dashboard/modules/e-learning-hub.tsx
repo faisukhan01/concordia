@@ -56,7 +56,7 @@ interface ScoreRecord {
 
 const SUBJECTS: { id: SubjectId; name: string; icon: typeof Play; gradient: string }[] = [
   { id: 'math', name: 'Mathematics', icon: Target, gradient: 'from-violet-500 to-purple-600' },
-  { id: 'physics', name: 'Physics', icon: Zap, gradient: 'from-sky-500 to-blue-600' },
+  { id: 'physics', name: 'Physics', icon: Zap, gradient: 'from-sky-500 to-[#F26522]' },
   { id: 'chemistry', name: 'Chemistry', icon: Brain, gradient: 'from-rose-500 to-pink-600' },
   { id: 'biology', name: 'Biology', icon: BookOpen, gradient: 'from-emerald-500 to-green-600' },
   { id: 'english', name: 'English', icon: GraduationCap, gradient: 'from-amber-500 to-orange-600' },
@@ -64,8 +64,8 @@ const SUBJECTS: { id: SubjectId; name: string; icon: typeof Play; gradient: stri
 ];
 
 const VIDEO_THUMBNAIL_GRADIENTS: Record<SubjectId, string> = {
-  math: 'from-violet-600 via-purple-700 to-indigo-800',
-  physics: 'from-sky-600 via-blue-700 to-indigo-800',
+  math: 'from-violet-600 via-purple-700 to-[#F26522]',
+  physics: 'from-sky-600 via-[#FF8C42] to-[#F26522]',
   chemistry: 'from-rose-600 via-pink-700 to-fuchsia-800',
   biology: 'from-emerald-600 via-green-700 to-teal-800',
   english: 'from-amber-600 via-orange-700 to-red-800',

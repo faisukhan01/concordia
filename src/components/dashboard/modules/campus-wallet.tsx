@@ -50,7 +50,7 @@ const CATEGORIES: { id: TxnCategory; label: string; amount: number; color: strin
   { id: 'cafeteria', label: 'Cafeteria', amount: 4280, color: '#f59e0b', icon: Coffee, tint: 'from-amber-500 to-yellow-600' },
   { id: 'bookshop', label: 'Bookshop', amount: 2100, color: '#f43f5e', icon: BookOpen, tint: 'from-rose-500 to-pink-600' },
   { id: 'printing', label: 'Printing', amount: 1450, color: '#10b981', icon: Printer, tint: 'from-emerald-500 to-teal-600' },
-  { id: 'transport', label: 'Transport', amount: 1080, color: '#0B1F3A', icon: Bus, tint: 'from-primary to-primary/80' },
+  { id: 'transport', label: 'Transport', amount: 1080, color: '#F26522', icon: Bus, tint: 'from-primary to-primary/80' },
   { id: 'stationery', label: 'Stationery', amount: 720, color: '#8b5cf6', icon: Pencil, tint: 'from-violet-500 to-purple-600' },
 ];
 

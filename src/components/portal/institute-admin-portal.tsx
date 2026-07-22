@@ -42,7 +42,7 @@ function ModuleFallback() {
 
 // ============== Shared helpers ==============
 const formatPKR = (n: any) => 'PKR ' + Number(n || 0).toLocaleString('en-PK');
-const NAVY = '#1a365d';
+const NAVY = '#F26522';
 const ROSE = '#e11d48';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -1079,7 +1079,7 @@ function InstituteStudentsView({ finance, loading }: any) {
     ? Math.round(students.reduce((sum: number, s: any) => sum + (s.total || 0), 0) / students.length)
     : 0;
 
-  const pieColors = [NAVY, '#2c5282', '#4a7ba8', '#6b9cc4', '#8fb6d6', ROSE, '#f59e0b', '#10b981'];
+  const pieColors = [NAVY, '#FF8C42', '#4a7ba8', '#6b9cc4', '#8fb6d6', ROSE, '#f59e0b', '#10b981'];
 
   if (loading) return <Card className="p-6"><LoadingState label="Loading students…" /></Card>;
   if (!finance) return <EmptyState icon={GraduationCap} title="No student data" desc="Students will appear here once they are enrolled in branches." />;

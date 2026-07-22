@@ -39,7 +39,7 @@ type CalendarEvent = {
 
 // ── UI scaffolding (no fake data — only static stage/event metadata) ───
 const STAGES: { key: PipelineStage; label: string; color: string; gradient: string }[] = [
-  { key: 'New', label: 'New', color: 'text-blue-600 bg-blue-500/10 border-blue-500/20', gradient: 'from-blue-500 to-blue-600' },
+  { key: 'New', label: 'New', color: 'text-[#F26522] bg-[#FF8C42]/10 border-[#F26522]/20', gradient: 'from-[#FF8C42] to-[#F26522]' },
   { key: 'Under Review', label: 'Under Review', color: 'text-amber-600 bg-amber-500/10 border-amber-500/20', gradient: 'from-amber-500 to-amber-600' },
   { key: 'Test Scheduled', label: 'Test Scheduled', color: 'text-violet-600 bg-violet-500/10 border-violet-500/20', gradient: 'from-violet-500 to-violet-600' },
   { key: 'Interview', label: 'Interview', color: 'text-teal-600 bg-teal-500/10 border-teal-500/20', gradient: 'from-teal-500 to-teal-600' },
@@ -48,7 +48,7 @@ const STAGES: { key: PipelineStage; label: string; color: string; gradient: stri
 ];
 
 const stageColor: Record<string, string> = {
-  'New': 'text-blue-600 bg-blue-500/10 border-blue-500/20',
+  'New': 'text-[#F26522] bg-[#FF8C42]/10 border-[#F26522]/20',
   'Under Review': 'text-amber-600 bg-amber-500/10 border-amber-500/20',
   'Test Scheduled': 'text-violet-600 bg-violet-500/10 border-violet-500/20',
   'Interview': 'text-teal-600 bg-teal-500/10 border-teal-500/20',

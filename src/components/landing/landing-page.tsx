@@ -71,11 +71,11 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
             transition={{ duration: 0.6 }}
             className="text-left"
           >
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#1a365d]/5 border border-[#1a365d]/10 px-3.5 py-1.5 text-[11px] font-semibold text-[#1a365d] mb-6 tracking-wide uppercase">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#F26522]/5 border border-[#F26522]/10 px-3.5 py-1.5 text-[11px] font-semibold text-[#F26522] mb-6 tracking-wide uppercase">
               College Management Portal
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight leading-[1.15] text-[#0f1e3a]">
+            <h1 className="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight leading-[1.15] text-[#1a1a1a]">
               Manage your entire institution from a single platform
             </h1>
 
@@ -84,7 +84,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <Button size="lg" className="bg-[#1a365d] text-white hover:bg-[#0f1e3a] font-semibold rounded-lg shadow-sm cta-glow" onClick={() => setView('login')}>
+              <Button size="lg" className="bg-[#F26522] text-white hover:bg-[#D4541E] font-semibold rounded-lg shadow-sm cta-glow" onClick={() => setView('login')}>
                 Launch Portal <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
               <button
@@ -116,7 +116,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
               <div className="flex items-center gap-3">
                 <div className="flex -space-x-2">
                   {[...Array(4)].map((_, i) => (
-                    <div key={i} className="h-7 w-7 rounded-full bg-gradient-to-br from-[#1a365d]/15 to-[#1a365d]/5 border-2 border-white ring-1 ring-gray-100" />
+                    <div key={i} className="h-7 w-7 rounded-full bg-gradient-to-br from-[#F26522]/15 to-[#F26522]/5 border-2 border-white ring-1 ring-gray-100" />
                   ))}
                 </div>
                 <p className="text-xs text-gray-500">Trusted by growing institutions</p>
@@ -146,7 +146,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
               {/* Dashboard content */}
               <div className="flex h-[360px]">
                 {/* Mini sidebar */}
-                <div className="w-40 shrink-0 bg-[#1a365d] p-3 hidden sm:block">
+                <div className="w-40 shrink-0 bg-[#1a1a1a] p-3 hidden sm:block">
                   <div className="flex items-center gap-2 mb-5">
                     <BrandLogo size="xs" variant="light" />
                   </div>
@@ -171,11 +171,11 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
                     ].map(kpi => (
                       <div key={kpi.label} className="border border-gray-200 rounded-lg p-2.5">
                         <div className="flex items-center justify-between mb-1.5">
-                          <div className="h-6 w-6 rounded-md bg-[#1a365d]/8 grid place-items-center">
-                            <kpi.icon className="h-3 w-3 text-[#1a365d]" />
+                          <div className="h-6 w-6 rounded-md bg-[#F26522]/8 grid place-items-center">
+                            <kpi.icon className="h-3 w-3 text-[#F26522]" />
                           </div>
                         </div>
-                        <div className="text-sm font-bold text-[#0f1e3a] tabular-nums">{kpi.value}</div>
+                        <div className="text-sm font-bold text-[#1a1a1a] tabular-nums">{kpi.value}</div>
                         <div className="text-[9px] text-gray-400 mt-0.5">{kpi.label}</div>
                       </div>
                     ))}
@@ -190,7 +190,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
                     <div className="flex items-end gap-1.5 h-20">
                       {[45, 60, 50, 75, 65, 85].map((h, i) => (
                         <div key={i} className="flex-1 flex flex-col gap-0.5 items-center">
-                          <div className="w-full bg-[#1a365d] rounded-t-sm" style={{ height: `${h}%` }} />
+                          <div className="w-full bg-[#F26522] rounded-t-sm" style={{ height: `${h}%` }} />
                           <div className="w-full bg-[#e11d48]/40 rounded-b-sm" style={{ height: `${h * 0.35}%` }} />
                         </div>
                       ))}
@@ -210,7 +210,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400 tabular-nums">{row.rev}</span>
                             <div className="w-12 h-1 rounded-full bg-gray-100">
-                              <div className="h-full rounded-full bg-[#1a365d]" style={{ width: row.pct }} />
+                              <div className="h-full rounded-full bg-[#F26522]" style={{ width: row.pct }} />
                             </div>
                           </div>
                         </div>
@@ -222,7 +222,7 @@ function HeroSlider({ setView }: { setView: (v: any) => void }) {
             </div>
 
             {/* Subtle shadow under the browser frame */}
-            <div className="absolute -bottom-2 left-4 right-4 h-4 bg-[#1a365d]/5 blur-xl rounded-full" />
+            <div className="absolute -bottom-2 left-4 right-4 h-4 bg-[#F26522]/5 blur-xl rounded-full" />
           </motion.div>
 
         </div>
@@ -244,17 +244,17 @@ function LandingPageInner({ setView, menuOpen, setMenuOpen, scrolled }: any) {
 
           <div className="hidden md:flex items-center gap-1">
             {['Modules', 'Features', 'Tech'].map(item => (
-              <a key={item} href={`#${item.toLowerCase().replace(' ', '-')}`} className="px-3 py-2 text-sm font-medium rounded-lg transition text-gray-600 hover:text-[#0f1e3a] hover:bg-gray-50">
+              <a key={item} href={`#${item.toLowerCase().replace(' ', '-')}`} className="px-3 py-2 text-sm font-medium rounded-lg transition text-gray-600 hover:text-[#F26522] hover:bg-gray-50">
                 {item}
               </a>
             ))}
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="hidden sm:flex text-gray-600 hover:text-[#0f1e3a]" onClick={() => setView('login')}>
+            <Button variant="ghost" size="sm" className="hidden sm:flex text-gray-600 hover:text-[#F26522]" onClick={() => setView('login')}>
               Sign in
             </Button>
-            <Button size="sm" className="bg-[#1a365d] text-white hover:bg-[#0f1e3a] shadow-sm" onClick={() => setView('login')}>
+            <Button size="sm" className="bg-[#F26522] text-white hover:bg-[#D4541E] shadow-sm" onClick={() => setView('login')}>
               Launch Portal <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
             <Button variant="ghost" size="icon" className="md:hidden text-gray-600" onClick={() => setMenuOpen(v => !v)}>

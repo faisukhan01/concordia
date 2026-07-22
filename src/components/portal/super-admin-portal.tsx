@@ -613,7 +613,7 @@ function PlatformAnalytics({ finance, financeLoading, institutes, onRefresh }: a
                   <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={72} />
                   <Tooltip formatter={(v: any) => formatPKR(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="revenue" name="Revenue" fill="#1a365d" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenue" name="Revenue" fill="#F26522" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="salary" name="Salary" fill="#e11d48" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -629,8 +629,8 @@ function PlatformAnalytics({ finance, financeLoading, institutes, onRefresh }: a
                 <AreaChart data={finance.yearlyRevenue} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1a365d" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#1a365d" stopOpacity={0.05} />
+                      <stop offset="5%" stopColor="#F26522" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#F26522" stopOpacity={0.05} />
                     </linearGradient>
                     <linearGradient id="gradSal" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#e11d48" stopOpacity={0.4} />
@@ -642,7 +642,7 @@ function PlatformAnalytics({ finance, financeLoading, institutes, onRefresh }: a
                   <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={72} />
                   <Tooltip formatter={(v: any) => formatPKR(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1a365d" strokeWidth={2} fill="url(#gradRev)" />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#F26522" strokeWidth={2} fill="url(#gradRev)" />
                   <Area type="monotone" dataKey="salary" name="Salary" stroke="#e11d48" strokeWidth={2} fill="url(#gradSal)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -1540,8 +1540,8 @@ function BrandingPage() {
               <ShieldCheck className="h-3 w-3 text-primary/70" /> Platform Identity
             </div>
             <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight">Concordia College</h2>
-            <p className="text-blue-50/90 text-base sm:text-lg mt-1">College Management Portal</p>
-            <p className="text-blue-50/70 text-sm mt-3 max-w-md">
+            <p className="text-white/90 text-base sm:text-lg mt-1">College Management Portal</p>
+            <p className="text-white/70 text-sm mt-3 max-w-md">
               Modern school management for institutions worldwide — by Cyber Advance Solutions.
             </p>
           </div>
@@ -1555,8 +1555,8 @@ function BrandingPage() {
             <h3 className="font-bold text-sm">Color Theme</h3>
           </div>
           <div className="space-y-2.5">
-            <ColorRow name="Primary (Navy)" hex="#1e3a5f" className="bg-blue-800" />
-            <ColorRow name="Accent (Blue)" hex="#1d4ed8" className="bg-primary" />
+            <ColorRow name="Primary (Orange)" hex="#F26522" className="bg-[#F26522]" />
+            <ColorRow name="Accent (Orange)" hex="#FF8C42" className="bg-[#FF8C42]" />
             <ColorRow name="Highlight (Sky)" hex="#0284c7" className="bg-sky-600" />
             <ColorRow name="Neutral (Slate)" hex="#475569" className="bg-slate-600" />
           </div>

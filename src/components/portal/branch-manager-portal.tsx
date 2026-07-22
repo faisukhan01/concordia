@@ -42,7 +42,7 @@ function ModuleFallback() {
 }
 
 const fmtMoney = (n: number) => 'PKR ' + Number(n || 0).toLocaleString('en-PK');
-const NAVY = '#1a365d';
+const NAVY = '#F26522';
 const ROSE = '#e11d48';
 const EMERALD = '#059669';
 
@@ -1541,7 +1541,7 @@ function ClassCoursesView({ user }: { user: any }) {
           {loadingAssigned ? (
             <div className="text-sm text-muted-foreground py-4 text-center">Loading assigned courses…</div>
           ) : assignedCourses.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[oklch(0.6_0.04_260)] dark:border-blue-700 bg-accent dark:bg-[oklch(0.12_0.03_260)_/_0.4] px-4 py-4 text-sm text-primary dark:text-[oklch(0.8_0.03_260)]">
+            <div className="rounded-lg border border-dashed border-[oklch(0.6_0.04_260)] dark:border-[#F26522] bg-accent dark:bg-[oklch(0.12_0.03_260)_/_0.4] px-4 py-4 text-sm text-primary dark:text-[oklch(0.8_0.03_260)]">
               <strong>No courses assigned yet.</strong> Click <em>Assign Courses</em> above to select the subjects taught in this class. You must assign courses before you can add teachers for this class.
             </div>
           ) : (
@@ -1574,7 +1574,7 @@ function ClassCoursesView({ user }: { user: any }) {
                           className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left transition ${
                             checked ? 'border-[oklch(0.5_0.04_260)_/_0.4] bg-accent0/10' : 'border-border bg-background hover:bg-muted/50'
                           }`}>
-                          <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-primary border-blue-700' : 'border-input bg-background'}`}>
+                          <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-primary border-[#F26522]' : 'border-input bg-background'}`}>
                             {checked && <CheckCircle2 className="h-3 w-3 text-white" />}
                           </span>
                           <div className="min-w-0 flex-1">

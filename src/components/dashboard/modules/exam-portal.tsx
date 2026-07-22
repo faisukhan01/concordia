@@ -572,8 +572,8 @@ function PerformanceAnalytics({ results }: { results: PastResult[] }) {
   const strengths = subjectPerformance.filter(s => s.score >= 80).map(s => s.subject);
   const weaknesses = subjectPerformance.filter(s => s.score < 60).map(s => s.subject);
 
-  const NAVY = '#1a365d';
-  const NAVY_LIGHT = '#3b5b8c';
+  const NAVY = '#F26522';
+  const NAVY_LIGHT = '#FF8C42';
 
   return (
     <div className="space-y-6">

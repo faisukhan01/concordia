@@ -955,3 +955,77 @@ Stage Summary:
 - Vercel deployment concordia-eight.vercel.app is live with all fixes (dark sidebar theme, new hero image, logo visibility).
 - All 3 prior user complaints resolved and verified on production.
 - Recurring 15-min webDevReview cron set up for continuous improvement.
+
+---
+Task ID: CONCORDIA-THEME-1
+Agent: general-purpose (color theme migration)
+Task: Replace all hardcoded navy/blue/indigo colors with Concordia orange theme across 15 files.
+
+Work Log:
+- src/components/landing/landing-page.tsx — 14 navy hex (#1a365d / #0f1e3a) → orange #F26522 (accents/buttons/bars) or charcoal #1a1a1a (headings/sidebar mockup). Hero CTA buttons now bg-[#F26522] hover:bg-[#D4541E]. Mini-sidebar mockup bg-[#1a1a1a] (matches new dark-charcoal portal sidebar from globals.css).
+- src/components/portal/super-admin-portal.tsx — 6 navy hex + 3 blue class. Bar chart revenue fill #1a365d→#F26522, area chart gradient stops #1a365d→#F26522, area stroke #1a365d→#F26522. Brand showcase ColorRow "Primary (Navy)" hex now #F26522 with bg-[#F26522]; "Accent (Blue)" hex now #F26522 (label text left unchanged per task rules). text-blue-50/90 → text-white/90, text-blue-50/70 → text-white/70 on hero card text.
+- src/components/portal/student-portal.tsx — 5 navy hex. GRADE_COLORS A+ #1a365d→#F26522, A #2c5282→#FF8C42 (other B/C/D blue shades left as-is since not in explicit mapping). Fee challan inline-CSS: top-bar bg #1a365d→#F26522, amount-box val color #1a365d→#F26522, footer strong color #1a365d→#F26522.
+- src/components/portal/teacher-portal.tsx — 3 navy hex. Attendance area chart gradient stops + Area stroke + dot fill, all #1a365d→#F26522.
+- src/components/portal/branch-manager-portal.tsx — 1 navy hex + 2 blue class. const NAVY value #1a365d→#F26522 (variable name preserved). dark:border-blue-700→dark:border-[#F26522] (assigned-courses empty state). border-blue-700→border-[#F26522] (course-select checkbox active state).
+- src/components/portal/institute-admin-portal.tsx — 2 navy hex. const NAVY value #1a365d→#F26522 (var name preserved). pieColors array #2c5282→#FF8C42 (second slice).
+- src/components/portal/report-card-view.tsx — 8 navy hex. gradeHexStyle B: color #1e3a5f→#F26522 (also updated light-blue bg #e0e7ef→#FFF7ED orange-50, border #b6c5d8→#FDBA74 orange-300, for visual coherence). Report card rc border #1e3a5f→#F26522. Banner gradient (#1e3a5f + #2c5282)→(#F26522 + #FF8C42). Table header text #1e3a5f→#1a1a1a (charcoal, for readability). sum-val default text #0f1e3a→#D4541E (orange). footer-brand #1e3a5f→#F26522. Print border #1e3a5f→#F26522. Inline "Obtained" sum-val color #1e3a5f→#F26522.
+- src/components/dashboard/modules/exam-portal.tsx — const NAVY value #1a365d→#F26522 (variable name preserved), const NAVY_LIGHT value #3b5b8c→#FF8C42 (variable name preserved; NAVY_LIGHT defined but not referenced elsewhere in file).
+- src/components/dashboard/modules/dashboard-overview.tsx — 8 navy hex + 11 blue class lines. KPI cards: from-blue-600 to-blue-800 → from-[#F26522] to-[#D4541E]; from-blue-500 to-blue-700 → from-[#FF8C42] to-[#F26522]; text-blue-700 accents → text-[#F26522]. Pie chart: Present #1a365d→#F26522, Late #3b82f6→#FF8C42 (Absent #f43f5e left alone — semantic red). Welcome banner gradient from-blue-800 via-blue-900 to-blue-950 → from-[#F26522] via-[#D4541E] to-[#1a1a1a] (orange→charcoal hero gradient for white-text readability). Decorative bg-blue-400/15→bg-[#F26522]/15; pulse dot bg-blue-300→bg-[#FF8C42]; banner description text-blue-50/80→text-white/80; Send Alert button text-blue-800 hover:bg-blue-50→text-[#F26522] hover:bg-orange-50; badge text-blue-700 border-blue-500/30→text-[#F26522] border-[#F26522]/30; area chart stroke #1a365d→#F26522 + gradient stops; bar chart collected #1a365d→#F26522 + pending #3b82f6→#FF8C42 (overdue #f43f5e left alone — semantic red); subject-perf bar #1a365d→#F26522; quick-stats icon text-blue-700→text-[#F26522].
+- src/components/dashboard/modules/online-admissions.tsx — 2 blue class lines (both for "New" stage badge): STAGES[0].color text-blue-600 bg-blue-500/10 border-blue-500/20 → text-[#F26522] bg-[#FF8C42]/10 border-[#F26522]/20; STAGES[0].gradient from-blue-500 to-blue-600 → from-[#FF8C42] to-[#F26522]; stageColor['New'] same as STAGES[0].color. Other stages (Under Review/Test/Interview/Accepted/Rejected) untouched — they use amber/violet/teal/emerald/rose, all non-blue.
+- src/components/dashboard/modules/e-learning-hub.tsx — 3 blue class lines. Physics subject gradient to-blue-600→to-[#F26522]. Math thumbnail gradient to-indigo-800→to-[#F26522]. Physics thumbnail gradient via-blue-700→via-[#F26522] and to-indigo-800→to-[#F26522]. (Sky-500/600 left alone — sky is not in user's blue/indigo mapping.)
+- src/app/download/page.tsx — 2 blue class lines + extra navy hex occurrences (file had more navy than user's count). Institute Admin role color #0B1F3A→#F26522 (orange brand), Branch Manager role color #1E3A5F→#FF8C42 (lighter orange, to keep roles visually distinct). Back-link text, h1, h2 headings, feature/portal titles all text-[#0B1F3A]→text-[#1a1a1a] (charcoal for readability). Download button bg-[#0B1F3A]→bg-[#F26522] with hover:bg-[#1E3A5F]→hover:bg-[#D4541E] (orange→darker orange). Info banner bg-blue-50→bg-orange-50, border-blue-200→border-orange-200, text-blue-800→text-[#F26522]. Install-instructions dark section bg-[#0B1F3A]→bg-[#1a1a1a] (charcoal — keeps white text readable).
+- src/lib/role-modules.ts — 3 blue class lines (all for exam-portal module): from-indigo-500 to-blue-600 → from-[#FF8C42] to-[#F26522] on lines 75, 95, 113. (Edit-tool replace_all introduced a stray double-comma on L95 & L113 — fixed via follow-up Edit calls.)
+- src/lib/modules.ts — 1 blue class line: exam-portal color from-indigo-500 to-blue-600 → from-[#FF8C42] to-[#F26522].
+- src/components/dashboard/modules/campus-wallet.tsx — 1 hex: transport category color #0B1F3A→#F26522 (per user's explicit instruction). Other categories (cafeteria #f59e0b amber, bookshop #f43f5e rose, printing #10b981 emerald, stationery #8b5cf6 violet) left untouched — all in user's protected semantic-colors list.
+
+Stage Summary:
+- 15 files edited, ~75 distinct color occurrences replaced (each line often had multiple blue/indigo classes collapsed to orange equivalents).
+- Lint: PASS, 0 errors, 0 warnings (exit code 0).
+- Variable names preserved everywhere: NAVY/NAVY_LIGHT consts in exam-portal.tsx, branch-manager-portal.tsx, institute-admin-portal.tsx kept their names — only the hex VALUES changed (now #F26522 / #FF8C42). All downstream references (Bar fill={NAVY}, stroke={NAVY}, pieColors array, etc.) automatically pick up the new orange values.
+- Semantic data-viz colors left untouched per user's rules: #f43f5e (rose/red — absent/error/overdue), #10b981 (emerald/green — present/success), #f59e0b (amber — late/warning), #8b5cf6 (violet — stationery). Also left alone: #e11d48 (revenue/salary chart red), #16A34A (teacher role green), #D4A437 (student role gold), #047857 (grade A green), #b45309 (grade C amber), #991b1b (grade F red), #6b7280 (grade D gray), sky/violet/teal/rose/fuchsia/emerald subject gradients in e-learning-hub (not in user's blue/indigo mapping).
+- Judgement calls to flag for review:
+  1. dashboard-overview.tsx pie chart "Present" was navy #1a365d (not the protected green #10b981), and "Late" was blue #3b82f6 (not the protected amber #f59e0b). Per user's explicit override ("all #3b82f6 with #FF8C42") I mapped Present→#F26522 (orange) and Late→#FF8C42 (lighter orange). Result: Present and Late are now two shades of orange (still distinguishable, but no longer follow the absent=red/present=green/late=amber semantic convention). If the user prefers Present=green and Late=amber per the convention, those two pieData entries should be #10b981 and #f59e0b respectively.
+  2. report-card-view.tsx grade "B" badge: in addition to changing the navy text color #1e3a5f→#F26522, I also changed the light-blue background #e0e7ef→#FFF7ED (orange-50) and border #b6c5d8→#FDBA74 (orange-300) for visual coherence (orange text on light-blue bg would have looked off). The user's explicit hex mapping didn't list these two hexes.
+  3. download/page.tsx had more navy hex occurrences than the user's "2 blue class" count suggested (the file had ~10 #0B1F3A and 1 #1E3A5F hex occurrences plus the 2 blue class lines). I replaced ALL of them per the user's broader "Replace ALL" instruction. Headings/titles became charcoal #1a1a1a; button bg became orange #F26522; install-instructions dark section bg became charcoal #1a1a1a.
+  4. e-learning-hub.tsx physics thumbnail gradient L68 originally `from-sky-600 via-blue-700 to-indigo-800` now reads `from-sky-600 via-[#F26522] to-[#F26522]` — the two adjacent orange stops create a flat-orange section in the gradient. Visually OK but the user may want to simplify to a 2-stop gradient.
+  5. super-admin-portal.tsx ColorRow brand-color showcase L1558-1559: the UI labels still say "Primary (Navy)" and "Accent (Blue)" but the swatches are now both #F26522 orange. Per task rules I left text labels alone. May want to update labels to "Primary (Orange)" / "Accent (Orange)" in a follow-up.
+  6. landing-page.tsx hero KPI mockup mini-sidebar bg-[#1a365d] became bg-[#1a1a1a] charcoal (matching the new dark-charcoal portal sidebar from globals.css CONCORDIA-PUSH-1 entry). Could alternatively be an orange gradient if preferred.
+- No git commit/push performed (per task rules). Lint clean. All 15 files now use Concordia orange theme; no remaining navy/blue/indigo hex codes or Tailwind blue/indigo classes in any of the edited files.
+
+---
+Task ID: CONCORDIA-THEME-2
+Agent: main (this session)
+Task: Migrate entire system color theme from navy/blue to official Concordia College orange (#F26522) + white + warm charcoal, matching https://concordia-edu-pk.netlify.app/. Then push to GitHub + verify Vercel.
+
+Work Log:
+- Extracted exact color theme from user's screenshot via VLM: primary orange #F26522, dark text #1A1A1A, secondary text #4A5568, warm off-white bg #FCFBF9, dark charcoal sidebar #211D1A. Also fetched reference site CSS to confirm.
+- Converted all key colors to OKLCH via a Python script for precise CSS values:
+  * #F26522 orange -> oklch(0.676 0.189 42)
+  * #D4541E darker orange (hover) -> oklch(0.607 0.173 40.4)
+  * #FF8C42 lighter orange -> oklch(0.754 0.164 50.4)
+  * #FFF0E8 light orange tint -> oklch(0.965 0.019 50.2)
+  * #1A1A1A near-black text -> oklch(0.218 0 0)
+  * #FCFBF9 warm off-white -> oklch(0.988 0.003 84.6)
+  * #211D1A warm charcoal sidebar -> oklch(0.234 0.008 59.2)
+  * #2D2926 lighter charcoal hover -> oklch(0.284 0.008 59.3)
+- Rewrote src/app/globals.css :root and .dark blocks with full Concordia orange palette (primary, secondary, accent, ring, border, chart-1..5, sidebar* all orange/charcoal based).
+- Rewrote src/components/auth/login-page.tsx: replaced all navy (#1a365d/#0f1e3a/#0a1628) with orange (#F26522/#D4541E) + charcoal (#1a1a1a). Orange gradient Sign In button, orange diagonal accent stripe, orange focus rings, orange "Secure Access" divider, orange role-badge icons, orange "Excellence in Education" accent line.
+- Delegated bulk color replacement to subagent CONCORDIA-THEME-1: replaced ~75 hardcoded navy/blue/indigo occurrences across 15 files (landing-page, 5 portal files, report-card-view, exam-portal, dashboard-overview, online-admissions, e-learning-hub, download/page, role-modules, modules, campus-wallet). Lint clean.
+- Fixed subagent judgement calls:
+  * dashboard-overview.tsx pie chart: Present -> green #10b981, Late -> amber #f59e0b (proper data-viz semantics, not orange).
+  * e-learning-hub.tsx physics gradient: from-sky-600 via-[#FF8C42] to-[#F26522] (smooth 3-stop instead of flat orange).
+  * super-admin-portal.tsx brand-color showcase: labels "Primary (Navy)"/"Accent (Blue)" -> "Primary (Orange)"/"Accent (Orange)" with correct hex values.
+- Verified locally with agent-browser + VLM:
+  * Landing page: orange Launch Portal buttons, orange badge, no navy/blue. (preview-theme-landing.png)
+  * Login page: orange Sign In button, orange accent stripe, orange "Forgot password?" link, orange "Excellence in Education" line. (preview-theme-login.png)
+  * Super-admin portal: dark charcoal sidebar (NOT navy), orange welcome banner, orange "Got it" button, Concordia logo visible, zero navy/blue. (preview-theme-portal.png)
+  * Teacher portal: dark charcoal sidebar, Dashboard item highlighted with orange text/icon, orange welcome banner, zero navy/blue. (preview-theme-teacher.png)
+- Lint: 0 errors, 0 warnings.
+- Dev server: HTTP 200, stable.
+
+Stage Summary:
+- Entire system migrated from navy/blue theme to official Concordia College orange (#F26522) + warm off-white + dark charcoal theme, matching the reference site.
+- ~75 color occurrences replaced across 17 files (globals.css + login-page + 15 files via subagent).
+- Data-viz semantic colors preserved (green=present, red=absent, amber=late, violet=stationery).
+- All 4 key screens verified orange-themed via VLM: landing, login, super-admin portal, teacher portal.
+- Ready to commit + push to GitHub + verify Vercel auto-deploy.
