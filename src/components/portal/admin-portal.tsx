@@ -63,6 +63,18 @@ import {
   Inbox,
 } from 'lucide-react';
 
+// Sub-portal components — the admin can access every role's full portal.
+// When the admin clicks a namespaced module (e.g. `admissions:admissions-new`)
+// we delegate rendering to the dedicated portal component, passing the
+// de-namespaced module ID. This gives the admin the EXACT same UI as the
+// dedicated role portal, with zero code duplication.
+import { AdmissionsPortal } from './admissions-portal';
+import { AccountantPortal } from './accountant-portal';
+import { AcademicPortal } from './academic-portal';
+import { TeacherPortal } from './teacher-portal';
+import { StudentPortal } from './student-portal';
+import { ParentPortal } from './parent-portal';
+
 type Props = { activeModule: string; user: any };
 
 // ───────────────────────── Shared helpers ─────────────────────────
@@ -1652,8 +1664,39 @@ function ComingSoon({ title }: { title: string }) {
 }
 
 // ───────────────────────── Main router ─────────────────────────
+//
+// The Admin sidebar uses namespaced module IDs for sub-portal modules:
+//   `admissions:admissions-new`  →  <AdmissionsPortal activeModule="admissions-new" />
+//   `accountant:accountant-challans`  →  <AccountantPortal activeModule="accountant-challans" />
+//   `academic:timetable`  →  <AcademicPortal activeModule="timetable" />
+//   `teacher:teacher-dashboard`  →  <TeacherPortal activeModule="teacher-dashboard" />
+//   `student:my-results`  →  <StudentPortal activeModule="my-results" />
+//   `parent:my-timetable`  →  <ParentPortal activeModule="my-timetable" />
+//
+// This gives the admin the EXACT same UI as each dedicated role portal.
 
 export function AdminPortal({ activeModule, user }: Props) {
+  // ── Sub-portal delegation (namespaced modules) ──
+  if (activeModule && activeModule.includes(':')) {
+    const [ns, modId] = activeModule.split(':', 2);
+    const subModule = modId || '';
+    switch (ns) {
+      case 'admissions':
+        return <div className="animate-in fade-in-0 duration-200"><AdmissionsPortal activeModule={subModule} user={user} /></div>;
+      case 'accountant':
+        return <div className="animate-in fade-in-0 duration-200"><AccountantPortal activeModule={subModule} user={user} /></div>;
+      case 'academic':
+        return <div className="animate-in fade-in-0 duration-200"><AcademicPortal activeModule={subModule} user={user} /></div>;
+      case 'teacher':
+        return <div className="animate-in fade-in-0 duration-200"><TeacherPortal activeModule={subModule} user={user} /></div>;
+      case 'student':
+        return <div className="animate-in fade-in-0 duration-200"><StudentPortal activeModule={subModule} user={user} /></div>;
+      case 'parent':
+        return <div className="animate-in fade-in-0 duration-200"><ParentPortal activeModule={subModule} user={user} /></div>;
+    }
+  }
+
+  // ── Admin-native modules ──
   let content: React.ReactNode;
   switch (activeModule) {
     case 'admin-overview':

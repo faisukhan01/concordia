@@ -1,18 +1,33 @@
 import { createClient } from '@libsql/client';
 
-// Turso DB client — server-side only (never import in client components)
-// Credentials MUST come from environment variables. No hardcoded fallbacks.
+// ─────────────────────────────────────────────────────────────
+// Database client — server-side only (never import in client components)
+//
+// Priority:
+//   1. Turso (production)  — TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
+//   2. Local SQLite (dev)  — DATABASE_URL=file:./db/custom.db
+//
+// This lets the dev server run without Turso credentials while
+// production (Vercel) uses the configured Turso instance.
+// ─────────────────────────────────────────────────────────────
 const TURSO_URL = process.env.TURSO_DATABASE_URL;
 const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
+const LOCAL_DB = process.env.DATABASE_URL;
 
-if (!TURSO_URL || !TURSO_TOKEN) {
-  // Fail loud on misconfiguration rather than silently using a stale credential.
-  console.error('[db] Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN environment variables.');
+const dbUrl = TURSO_URL || LOCAL_DB || 'file:./db/custom.db';
+const dbToken = TURSO_TOKEN || '';
+
+if (TURSO_URL) {
+  // Production — Turso
+} else if (LOCAL_DB) {
+  console.info('[db] Using local SQLite at', LOCAL_DB);
+} else {
+  console.warn('[db] No TURSO_DATABASE_URL or DATABASE_URL set — falling back to file:./db/custom.db');
 }
 
 export const db = createClient({
-  url: TURSO_URL || 'libsql://placeholder.local',
-  authToken: TURSO_TOKEN || '',
+  url: dbUrl,
+  authToken: dbToken,
 });
 
 // Initialize schema on first call

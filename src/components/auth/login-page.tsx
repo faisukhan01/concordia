@@ -6,21 +6,26 @@ import { api } from '@/lib/api';
 import { useApp } from '@/lib/store';
 import {
   Lock, Eye, EyeOff, Loader2, ArrowRight, ArrowLeft, User as UserIcon,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { BrandLogo } from '@/components/brand-logo';
 
 // ==================== Concordia College — Sign In ====================
-// Layout (UCP-inspired):
-//   • Full-page campus photograph as the background
+// Layout (UCP-inspired, refined):
+//   • Full-page campus photograph as the background — clearly visible
 //   • LEFT  — clean white login card: logo, username, password, single "Login" button
 //   • RIGHT — translucent demo-accounts panel (ephemeral, removable later)
+//
+// The campus image covers the entire viewport. A subtle left-to-right
+// gradient ensures the white card on the left has enough contrast, while
+// the right side shows the campus in full colour.
 
 const DEMO_ACCOUNTS = [
-  { role: 'Admin', email: 'admin@concordia.edu.pk' },
+  { role: 'Admin',            email: 'admin@concordia.edu.pk' },
   { role: 'Admission Office', email: 'admissions@concordia.edu.pk' },
-  { role: 'Accountant', email: 'accountant@concordia.edu.pk' },
-  { role: 'Academic Office', email: 'academics@concordia.edu.pk' },
+  { role: 'Accountant',       email: 'accountant@concordia.edu.pk' },
+  { role: 'Academic Office',  email: 'academics@concordia.edu.pk' },
 ];
 
 export function LoginPage() {
@@ -77,127 +82,140 @@ export function LoginPage() {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
-      {/* ─── Full-page campus photograph ─── */}
+      {/* ─── Full-page campus photograph — covers the entire viewport ─── */}
       <div
-        className="absolute inset-0 bg-cover bg-center"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: 'url(/concordia-campus.jpg)' }}
       />
-      {/* Dark gradient overlay for readability — heavier on the left where the card sits */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/30" />
+      {/* Subtle gradient overlay — darker on the left for card contrast,
+          lighter on the right so the campus is clearly visible */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/25 to-transparent" />
+      {/* Bottom vignette so the copyright text is readable */}
+      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 to-transparent" />
 
-      {/* ─── Home link (top-left, above the card) ─── */}
+      {/* ─── Home link (top-left) ─── */}
       <button
         onClick={() => setView('landing')}
-        className="absolute top-5 left-5 z-30 flex items-center gap-1.5 text-xs font-medium text-white/70 hover:text-white transition-colors group"
+        className="absolute top-5 left-5 z-30 flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white transition-colors group"
       >
         <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
         Home
       </button>
 
       {/* ─── Main two-column layout ─── */}
-      <div className="relative z-20 min-h-screen flex items-stretch">
-        {/* ═══════════ LEFT — login card ═══════════ */}
-        <div className="flex-1 lg:flex-[0.55] flex items-center justify-center px-6 sm:px-10 py-12">
+      <div className="relative z-20 min-h-screen flex items-stretch justify-between">
+        {/* ═══════════ LEFT — clean white login card ═══════════ */}
+        <div className="flex-1 lg:flex-[0.58] flex items-center justify-center px-6 sm:px-10 py-12">
           <motion.div
-            initial={{ opacity: 0, y: 18 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
-            className="w-full max-w-[380px]"
+            transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+            className="w-full max-w-[400px]"
           >
-            {/* Logo */}
-            <div className="mb-10 flex justify-center">
-              <BrandLogo size="lg" priority />
+            <div className="rounded-2xl bg-white/95 backdrop-blur-xl shadow-2xl shadow-black/30 ring-1 ring-black/5 px-8 py-10">
+              {/* Logo */}
+              <div className="mb-8 flex justify-center">
+                <BrandLogo size="lg" priority />
+              </div>
+
+              {/* Heading */}
+              <h1 className="text-[26px] leading-tight font-bold text-[#1A1A1A] tracking-tight text-center">
+                Sign in
+              </h1>
+              <p className="text-sm text-gray-500 mt-1.5 text-center">
+                Use your Concordia account to continue
+              </p>
+
+              {/* Form */}
+              <form onSubmit={handleSubmit} className="mt-7 space-y-3.5">
+                {/* Username */}
+                <div className="relative">
+                  <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-gray-400 pointer-events-none" />
+                  <input
+                    id="login-email"
+                    type="text"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    autoComplete="username"
+                    placeholder="Enter Username"
+                    className="w-full h-12 pl-11 pr-4 rounded-xl border border-gray-200 bg-gray-50/80 text-[#1A1A1A] text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
+                  />
+                </div>
+
+                {/* Password */}
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-gray-400 pointer-events-none" />
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    placeholder="Enter Password"
+                    className="w-full h-12 pl-11 pr-11 rounded-xl border border-gray-200 bg-gray-50/80 text-[#1A1A1A] text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(s => !s)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#F26522] transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                  </button>
+                </div>
+
+                {/* Single Login button */}
+                <motion.button
+                  type="submit"
+                  disabled={isLoading}
+                  whileTap={{ scale: 0.985 }}
+                  className="w-full h-12 rounded-xl bg-[#F26522] hover:bg-[#D4541E] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#F26522]/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed mt-1"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Logging in…
+                    </>
+                  ) : (
+                    <>
+                      Login
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </motion.button>
+              </form>
             </div>
 
-            {/* Heading */}
-            <h1 className="text-[28px] leading-tight font-bold text-white tracking-tight text-center">
-              Sign in
-            </h1>
-            <p className="text-sm text-white/60 mt-2 text-center">
-              Use your Concordia account to continue.
-            </p>
-
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-              {/* Username */}
-              <div className="relative">
-                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-white/40 pointer-events-none" />
-                <input
-                  id="login-email"
-                  type="text"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  autoComplete="username"
-                  placeholder="Enter Username"
-                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm text-white text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white/15 focus:ring-2 focus:ring-[#F26522]/25 placeholder:text-white/40"
-                />
-              </div>
-
-              {/* Password */}
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-white/40 pointer-events-none" />
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  placeholder="Enter Password"
-                  className="w-full h-12 pl-11 pr-11 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm text-white text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white/15 focus:ring-2 focus:ring-[#F26522]/25 placeholder:text-white/40"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(s => !s)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
-                </button>
-              </div>
-
-              {/* Single Login button */}
-              <motion.button
-                type="submit"
-                disabled={isLoading}
-                whileTap={{ scale: 0.985 }}
-                className="w-full h-12 rounded-xl bg-[#F26522] hover:bg-[#D4541E] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#F26522]/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Logging in…
-                  </>
-                ) : (
-                  <>
-                    Login
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </motion.button>
-            </form>
-
-            <p className="text-center text-[11px] text-white/40 mt-8">
+            <p className="text-center text-[11px] text-white/70 mt-5 drop-shadow">
               © {new Date().getFullYear()} Concordia College · All rights reserved
             </p>
           </motion.div>
         </div>
 
-        {/* ═══════════ RIGHT — demo accounts (ephemeral) ═══════════ */}
-        <div className="hidden lg:flex lg:flex-[0.45] items-center justify-center px-10 py-12">
+        {/* ═══════════ RIGHT — demo accounts panel (ephemeral) ═══════════ */}
+        <div className="hidden lg:flex lg:flex-[0.42] items-center justify-center px-8 py-12">
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: [0.4, 0, 0.2, 1] }}
-            className="w-full max-w-sm"
+            transition={{ duration: 0.5, delay: 0.12, ease: [0.4, 0, 0.2, 1] }}
+            className="w-full max-w-[340px]"
           >
-            <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-md p-6 shadow-2xl">
+            {/* Ephemeral badge */}
+            <div className="flex items-center justify-end gap-1.5 mb-3">
+              <Sparkles className="h-3 w-3 text-white/60" />
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/60">
+                Demo only · removable
+              </span>
+            </div>
+
+            <div className="rounded-2xl border border-white/20 bg-white/10 backdrop-blur-md p-5 shadow-2xl shadow-black/20">
               <div className="flex items-center gap-2 mb-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#F26522]" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/70">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/80">
                   Demo Accounts
                 </span>
               </div>
-              <p className="text-xs text-white/50 mb-4">Click any account to auto-fill the login form.</p>
+              <p className="text-xs text-white/60 mb-4">Click any account to auto-fill the login form.</p>
 
               <div className="space-y-2">
                 {DEMO_ACCOUNTS.map(c => (
@@ -218,7 +236,7 @@ export function LoginPage() {
                 ))}
               </div>
 
-              <p className="text-[11px] text-white/40 mt-4 leading-relaxed">
+              <p className="text-[11px] text-white/50 mt-4 leading-relaxed">
                 Teacher &amp; Student logins are created by the Academic Office.
               </p>
             </div>

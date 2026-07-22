@@ -226,8 +226,15 @@ export function RolePortal() {
 
   const role = user?.role || 'student';
   const groups = ROLE_MODULES[role] || [];
+  // For the admin role, sub-portal dropdown groups (Admission Office,
+  // Accountant, Academic Office, Teacher, Student, Parent) start COLLAPSED
+  // so the sidebar stays clean. Admin-native groups (Overview, People,
+  // Reports & Events, Account) stay open. All other roles: all groups open.
+  const SUB_PORTAL_GROUPS = new Set([
+    'Admission Office', 'Accountant', 'Academic Office', 'Teacher', 'Student', 'Parent',
+  ]);
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(
-    Object.fromEntries(groups.map((g: any) => [g.group, true]))
+    Object.fromEntries(groups.map((g: any) => [g.group, role === 'admin' ? !SUB_PORTAL_GROUPS.has(g.group) : true]))
   );
   const accent = roleAccent[role];
 
@@ -265,6 +272,16 @@ export function RolePortal() {
       setActiveModule(firstModule);
     }
   }, [role]);
+
+  // Auto-expand the group that contains the active module — so when the
+  // admin navigates to a sub-portal module (e.g. via command palette), its
+  // dropdown opens automatically to show the active item.
+  useEffect(() => {
+    const containingGroup = groups.find((g: any) => g.items.some((m: any) => m.id === activeModule));
+    if (containingGroup && !groupOpen[containingGroup.group]) {
+      setGroupOpen((g: any) => ({ ...g, [containingGroup.group]: true }));
+    }
+  }, [activeModule]);
 
   const allModules = useMemo(() => groups.flatMap((g: any) => g.items), [groups]);
   const active = allModules.find((m: any) => m.id === activeModule) || allModules[0] || { id: 'none', name: 'Home', icon: GraduationCap, color: 'from-primary to-primary/80' };
