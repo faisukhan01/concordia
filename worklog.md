@@ -827,3 +827,41 @@ Unresolved/Notes:
 - The old 'esm' repo (faisukhan01/esm) still exists on GitHub with prior history — user said "forget about it", so no action taken. Could be archived/deleted by user if desired.
 - Vercel deployment is still pointed at the old 'esm' repo (esm-rose.vercel.app). User will need to either: (a) re-point the Vercel project to the concordia repo, or (b) create a new Vercel project for concordia. Not done in this session since user only asked to push code.
 - The .gh-token is NOT in the repo (excluded by .gitignore) but IS still present in the local working directory for CI/API operations.
+
+---
+Task ID: CONCORDIA-SECRETS-FIX
+Agent: main (this session)
+Task: Resolve GitHub secret scanning alert, confirm Turso DB usage, prepare for Vercel deployment.
+
+Work Log:
+- User received GitHub secret-scanning email. Investigated: alert #1 was a google_api_key found in research/pgc/page_teacher_apkpure2.json (scraped reference data, not app code).
+- DISCOVERED: the app's REAL database is Turso (src/lib/server/db.ts uses @libsql/client) — NOT Prisma/SQLite. The Prisma schema + .env DATABASE_URL=file:... are vestigial dead code. Nothing imports src/lib/db.ts (Prisma). The API handler + auth both use the Turso client.
+- CONFIRMED: same Turso DB as previous esm project (libsql://campus-prod-faisukhan01.aws-ap-south-1.turso.io). All existing data (super admin, demo institute, etc.) is intact.
+- CRITICAL FIX: the Turso auth token was HARDCODED as a fallback in src/lib/server/db.ts line 5 — committed to the concordia repo. Removed the hardcoded fallback; credentials now come from env vars only (process.env.TURSO_DATABASE_URL / TURSO_AUTH_TOKEN). Added a console.error if env vars are missing.
+- Updated .gitignore to exclude /research/ (scraped data with third-party keys) and /download/*.png (QA screenshots).
+- Updated .env.example to show the correct Turso env vars (replaced the misleading SQLite DATABASE_URL).
+- Updated local .env with the Turso credentials (file is gitignored, never committed).
+- Created fresh orphan branch (clean-final), staged only safe files. Verified:
+  * 146 files staged (was 243 — removed research/, tool-results/, upload/, db/custom.db, etc.)
+  * Scanned all staged files for Turso token string → ZERO matches
+  * Scanned all staged files for Google API key pattern (AIza...) → ZERO matches
+- Force-pushed clean-final:main to overwrite repo history (commit 20a34f7).
+- Closed GitHub secret scanning alert #1 via PATCH API (state=resolved).
+- Installed @libsql/client (was missing from package.json deps). Committed + pushed (commit 6d8f01b).
+- Restarted dev server with env-based Turso config. Verified:
+  * Landing page: HTTP 200
+  * Login API (POST /api/auth/login with super-admin creds): HTTP 200, returns valid token + user object
+  * Lint: 0 errors
+- Synced local main branch to origin/main (commit 6d8f01b).
+
+Stage Summary:
+- GitHub secret alert RESOLVED. Repo history is clean — no tokens, no API keys, no PATs.
+- Turso DB confirmed as the production database. Same DB as esm project. All data preserved.
+- Env vars needed for Vercel: TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (values provided to user in chat).
+- Portal structure clarified: ONE app, ONE deployment, ONE link. Super admin + 4 role portals all live in the same Next.js app, routed by role after login.
+- The Prisma/SQLite setup (prisma/schema.prisma, src/lib/db.ts, .env DATABASE_URL) is dead code — can be cleaned up in a future pass but doesn't affect deployment.
+
+Unresolved/Notes:
+- The old esm repo still has the hardcoded Turso token in its history. User should consider making esm repo private or deleting it to fully revoke the token exposure. Alternatively, rotate the Turso token in the Turso dashboard.
+- Vercel deployment: user needs to create a new Vercel project pointed at faisukhan01/concordia repo, and add TURSO_DATABASE_URL + TURSO_AUTH_TOKEN as env vars.
+- Prisma dead code (schema.prisma, src/lib/db.ts, db/custom.db) can be removed in a cleanup pass to avoid confusion.
