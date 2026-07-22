@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Solid navy background filling the entire image, no border, no white -->
+  <rect width="100" height="100" rx="22" fill="#1a365d"/>
+  <!-- White graduation cap -->
+  <g fill="none" stroke="#ffffff" stroke-width="0" fill="#ffffff">
+    <!-- Cap top (mortarboard diamond) -->
+    <polygon points="50,28 78,40 50,52 22,40"/>
+    <!-- Cap base -->
+    <path d="M32,46 L32,58 C32,62 68,62 68,58 L68,46 L50,54 Z"/>
+    <!-- Tassel line -->
+    <line x1="78" y1="40" x2="78" y2="52" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Tassel -->
+    <circle cx="78" cy="55" r="3.5"/>
+  </g>
+</svg>
