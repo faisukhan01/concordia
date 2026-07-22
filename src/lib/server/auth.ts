@@ -8,11 +8,29 @@ const LOCKOUT_DURATION = 2 * 60 * 1000;
 
 export const ROLE_LABELS: Record<string, string> = {
   'super-admin': 'Super Admin',
+  'admin': 'Admin',
+  'admissions': 'Admission Office',
+  'accountant': 'Accountant',
+  'academic': 'Academic Office',
   'institute-admin': 'Institute Admin',
   'branch-manager': 'Branch Manager',
   'teacher': 'Teacher',
   'student': 'Student',
   'parent': 'Parent / Guardian',
+};
+
+// Concordia role equivalence — new office roles inherit backend permissions
+// from the legacy roles they replace, so all existing requireRole() checks
+// in handler.ts keep working without modification.
+//   admin       ≡ institute-admin + branch-manager  (top-level college oversight)
+//   academic    ≡ branch-manager                    (teachers, timetable, tests, results)
+//   admissions  ≡ branch-manager                    (student enrollment + base fee)
+//   accountant  ≡ branch-manager                    (fee collection + challans)
+const ROLE_EQUIVALENCE: Record<string, string[]> = {
+  'admin': ['institute-admin', 'branch-manager'],
+  'academic': ['branch-manager'],
+  'admissions': ['branch-manager'],
+  'accountant': ['branch-manager'],
 };
 
 export function nextId(prefix: string) {
@@ -29,7 +47,7 @@ export async function createSession(user: any) {
 }
 
 export function buildUserProfile(u: any) {
-  const campus = u.branchName || u.instituteName || u.instituteShort || 'Concordia College Portal';
+  const campus = u.branchName || u.instituteName || u.instituteShort || 'Concordia College';
   return {
     id: u.id, name: u.name, email: u.email, rollNo: u.rollNo, role: u.role,
     roleLabel: ROLE_LABELS[u.role] || u.role, title: u.title || '',
@@ -40,6 +58,7 @@ export function buildUserProfile(u: any) {
     guardian: u.guardian || null, ward: u.ward, wardId: u.wardId,
     subjects: u.subjects ? JSON.parse(u.subjects) : [],
     classes: u.classes ? JSON.parse(u.classes) : [],
+    baseFee: u.baseFee ?? null, baseFeeLocked: u.baseFeeLocked === 1,
     campus,
   };
 }
@@ -86,9 +105,13 @@ export async function requireAuth(req: Request): Promise<any> {
 }
 
 export function requireRole(user: any, ...roles: string[]) {
-  if (!roles.includes(user.role)) {
-    throw { status: 403, error: 'Not authorized' };
+  // Build the set of roles the current user effectively holds — their actual
+  // role plus any equivalent legacy roles (see ROLE_EQUIVALENCE above).
+  const effective = new Set<string>([user.role, ...(ROLE_EQUIVALENCE[user.role] || [])]);
+  for (const r of roles) {
+    if (effective.has(r)) return; // authorized
   }
+  throw { status: 403, error: 'Not authorized' };
 }
 
 export function registerFailedAttempt(rateKey: string) {

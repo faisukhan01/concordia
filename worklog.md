@@ -1062,3 +1062,123 @@ Stage Summary:
 - Vercel (concordia-eight.vercel.app) confirmed deployed with new orange theme (--primary:#f26522 in CSS).
 - Sidebar fully fixed: orange active items, orange avatar, orange section dots, clean alignment, proper spacing. Applied to BOTH role-portal.tsx (the actual portal sidebar) and dashboard-shell.tsx (for consistency).
 - Ready to commit + push sidebar fix.
+
+---
+Task ID: 5
+Agent: frontend-styling-expert (admissions-portal)
+Task: Build admissions-portal.tsx
+
+Work Log:
+- Read worklog.md (1064 lines) to understand prior context: Concordia orange theme migration (#F26522 primary, #D4541E darker, #FF8C42 lighter, #FFF0E8 tint), dark charcoal sidebar, role-modules.ts already defines the `admissions` role with 4 module IDs (admissions-overview, admissions-new, admissions-students, admissions-base-fee).
+- Inspected src/lib/api.ts: confirmed `api.platformUsers`, `api.createPlatformUser`, `api.editUser`, `api.getClasses`, `api.reference` are all available with the documented signatures.
+- Inspected src/lib/server/db.ts: confirmed the users table has Concordia admissions columns already migrated (baseFee, baseFeeLocked, fatherName, cnic, dob, address, prevResult, program, photoUrl). The admissions demo user `U-CONCORDIA-ADMISSIONS` (admissions@concordia.edu.pk / concordia123) is seeded into I-DEMO / B-DEMO.
+- Inspected src/lib/server/auth.ts: confirmed buildUserProfile surfaces `baseFee` and `baseFeeLocked` on the user object, so the GET platform/users response includes them.
+- Inspected src/lib/server/handler.ts: confirmed GET platform/users works for the admissions role (no role restriction, filters by branchId when passed). NOTE: the POST platform/users handler currently does `requireRole(user, 'branch-manager', 'institute-admin', 'super-admin')` — so admissions will get 403 until a backend task adds 'admissions' to that list. The PATCH handler only persists name/email/password/blocked/classId/addCourseIds — it does NOT yet persist the admissions fields (fatherName, cnic, baseFee, etc.). Since my task is frontend-only ("Only create admissions-portal.tsx. Do NOT modify other files."), I built the UI to call these endpoints AND optimistically update local state on error so the demo flows while the backend catches up. Each optimistic fallback shows a transparent toast ("Saved in this session — backend sync pending").
+- Inspected src/components/portal/role-portal.tsx: confirmed it already imports `AdmissionsPortal` from `./admissions-portal` and wires `case 'admissions': return <AdmissionsPortal activeModule={activeModule} user={user} />` at line 314. So my new file is already plug-compatible — no wiring change needed.
+- Inspected src/components/portal/add-user-modal.tsx + branch-manager-portal.tsx: studied the established design patterns (motion banner, KpiCard, EmptyState, ModuleHeader, toast usage, Select/Table/Sheet APIs) to keep the admissions portal visually consistent with the rest of the system.
+- Created /home/z/my-project/src/components/portal/admissions-portal.tsx (~1490 lines, single default export `AdmissionsPortal`). Structure:
+  * `AdmissionsPortal({ activeModule, user })` — router. Fetches students via `api.platformUsers({ role: 'student', branchId })` (scoped to the admissions officer's branch). Routes to 4 sub-views based on activeModule. Provides an `upsertLocal` optimistic helper.
+  * Shared: `ModuleHeader`, `EmptyState`, `KpiCard` (white bg, rounded-2xl, orange-tinted icon square, big number), `SkeletonTable`, `StatusBadge` (Locked=emerald w/ Lock icon, Pending=amber w/ Clock icon), `BaseFeeCallout` (the crystal-clear business-rule info box explaining the lock-once rule + Accountant can only split installments), `Field` (label-above-input wrapper), `Row`.
+  * `OverviewView` (admissions-overview): orange gradient welcome banner with this-month count, 4 KPI cards (Enrolled Students, This Month, Pending Base Fee, Base Fee Locked sum), Recent Admissions table (last 10), Enrollment-by-Program animated bars.
+  * `NewEnrollmentView` (admissions-new): 3 sectioned cards — Personal Information (name, father's name, CNIC, DOB, guardian, prev result, address), Academic Placement (program select, class select from api.getClasses, section select, auto-suggested roll #, photo upload with FileReader base64 preview), Base Fee Finalization (number input + prominent orange "Finalize & Lock" button that stages the lock, with LOCKED badge once staged). On save: calls api.createPlatformUser with all spec §2.1 fields + internal placeholder email/password (since admissions doesn't create logins — Accountant does). Shows a success screen with roll#, class, fee status + a callout reminding that login credentials are issued later by the Accountant.
+  * `StudentRecordsView` (admissions-students): search bar (name/father/roll#/CNIC) + class filter dropdown, full table (Roll#, Name, Father, Class, Program, Base Fee, Status, Edit), Edit opens a right-side Sheet with personal-info fields only (NOT base fee — locked fee shown read-only with a green callout).
+  * `BaseFeeView` (admissions-base-fee): BaseFeeCallout at top, "Awaiting Finalization" card listing unlocked students (amber-tinted rows, each with amount input + orange "Lock" button), "Locked Base Fees" read-only card below with total sum and Lock badges.
+  * `EditStudentSheet` + `PendingFeeRow` helper components.
+- Design language compliance: Concordia orange theme throughout (bg-primary, text-primary, from-primary, bg-accent, border-primary/30, ring-ring), KPI cards white bg rounded-2xl with orange-tinted icon squares, 2-column form grids on desktop / 1-col mobile, labels above inputs, orange focus rings (via theme --ring), lucide-react icons (UserPlus, GraduationCap, DollarSign, Lock, Search, etc.), loading skeletons (SkeletonTable) + friendly empty states (EmptyState) everywhere, responsive (sm:/md:/lg: breakpoints), framer-motion entrance animations on banner + program bars.
+- Lint iteration: first run flagged (a) 2 unused eslint-disable directives, (b) 2 React Compiler errors on `useMemo` deps `thisMonth`/`thisYear` derived from `new Date()` ("may be modified later"), (c) 1 unused @next/next/no-img-element disable. Fixed by: removing the stray disable comments, wrapping `now` in `useMemo(() => new Date(), [])` and deriving month/year INSIDE the thisMonthCount useMemo. Then hit `react-hooks/set-state-in-effect` because `refresh()` called `setLoading(true)` synchronously in the effect body. Fixed by inlining the fetch in the effect (no synchronous setState — all updates in async promise callbacks with a `cancelled` guard) and keeping a separate `refresh()` for manual button clicks that may synchronously flip loading. Final lint: **0 errors, 0 warnings, exit 0**.
+- TypeScript: `bunx tsc --noEmit` shows ZERO errors in admissions-portal.tsx (other pre-existing errors in unrelated dashboard modules are out of scope).
+
+Stage Summary:
+- admissions-portal.tsx created at /home/z/my-project/src/components/portal/admissions-portal.tsx — fully implements all 4 modules for the Admission Office role per Concordia spec §2 + §2.1.
+- The base-fee lock business rule is front-and-center: prominent orange "Finalize & Lock" button in the enrollment form, LOCKED badges with Lock icon everywhere, a BaseFeeCallout info box repeated on New Enrollment + Base Fee Finalization explaining "set once by Admission Office, locked forever, Accountant can only split into installments but cannot change the base amount".
+- Admissions does NOT create login credentials: the form collects no email/password fields; instead an internal placeholder email (`{rollNo}@pending.concordia.edu.pk`) + random temp password is generated so the platform-users row can be created, and the success screen explicitly reminds that the Accountant issues the real login after payment.
+- File is plug-compatible: role-portal.tsx already imports and renders `AdmissionsPortal` — no wiring changes needed.
+- Lint clean (0 errors / 0 warnings) and TypeScript clean for the new file.
+- Known backend gap (NOT in scope for this task, flagged for the next backend agent): (1) POST /platform/users needs `'admissions'` added to the requireRole list at handler.ts:312; (2) POST + PATCH /platform/users handlers need to persist the new admissions fields (fatherName, cnic, dob, address, prevResult, program, photoUrl, guardian, baseFee, baseFeeLocked) — currently only name/email/password/role/branch/class/section are saved. Until then, the UI uses optimistic local state + transparent toasts so the demo is fully functional.
+
+---
+Task ID: 5b
+Agent: general-purpose (admissions-portal redesign)
+Task: Redesign admissions-portal.tsx with clean, natural, non-agentic UI
+
+Work Log:
+- Read worklog.md (1097 lines) to understand prior context: Task 5 built the original admissions-portal.tsx (~1490 lines) with the orange-gradient welcome banner, orange-tinted KPI icon squares, orange-tinted BaseFeeCallout, framer-motion animated banner + program bars. The user later flagged the "agentic" look and asked for a clean, restrained redesign.
+- Re-read the full existing admissions-portal.tsx (1491 lines) and confirmed all 5 API entry points it uses: api.platformUsers, api.createPlatformUser, api.editUser, api.getClasses, api.reference. Confirmed component signature `AdmissionsPortal({ activeModule, user })` and the 4 sub-views (overview / new / students / base-fee).
+- Re-read src/lib/api.ts to confirm method signatures (platformUsers takes {role, branchId, instituteId}; createPlatformUser takes a body; editUser takes id + body; getClasses takes optional branchId; reference takes no args and returns {classes, sections, subjects}).
+- Re-read src/lib/role-modules.ts to confirm the admissions sidebar module IDs that the router must handle: admissions-overview, admissions-new, admissions-students, admissions-base-fee (+ settings handled elsewhere).
+- Inspected shadcn primitives (card.tsx, badge.tsx, button.tsx, input.tsx, sheet.tsx) to know what default styling to override. Card defaults to bg-card/border/shadow-sm/rounded-xl — I override to bg-white border-gray-200 shadow-none hover:shadow-sm. Button default variant is bg-primary (orange) but I force explicit `bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium` per the design spec. Badge default is bg-primary — I override with `bg-emerald-50 text-emerald-700` (Locked) / `bg-amber-50 text-amber-700` (Pending). Input default is h-9 with focus-visible:border-ring — I override with a shared `inputCls` constant: `h-10 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#F26522] focus:ring-2 focus:ring-[#F26522]/12`.
+- Wrote the redesigned file (1703 lines) following the 10 design rules STRICTLY:
+  * Rule 1 (welcome header): replaced the orange gradient banner with a `PageHeader` component — thin orange accent line (`h-0.5 w-8 bg-[#F26522]`) + `<h1>` `text-2xl font-bold text-gray-900` + one-line muted subtitle `text-sm text-gray-500`. No decorative circles/blobs/gradient text.
+  * Rule 2 (KPI cards): rewrote `KpiCard` as FLAT white card (`rounded-xl border border-gray-200 bg-white p-5 hover:shadow-sm`), small uppercase muted label (`text-[11px] font-semibold uppercase tracking-wider text-gray-400`), big number (`text-2xl font-bold text-gray-900`), small sub-text (`text-xs text-gray-500`), and a SMALL inline lucide icon top-right (`h-4 w-4 text-gray-400`). NO colored icon backgrounds, NO gradient squares.
+  * Rule 3 (color restraint): Orange (#F26522) appears ONLY on the accent line, primary buttons, the required-asterisk, focus rings, and active states. Everything else is grayscale (gray-50/100/200/400/500/700/900).
+  * Rule 4 (cards & sections): every card is `rounded-xl border border-gray-200 bg-white` with `hover:shadow-sm`. Section headers are `text-sm font-semibold text-gray-900` + optional `text-xs text-gray-500` desc. NO orange vertical bar accent.
+  * Rule 5 (tables): table headers `text-xs font-medium uppercase tracking-wider text-gray-400` on `border-gray-200` rows; rows `border-gray-100 hover:bg-gray-50`; cells `text-sm text-gray-700` (name cells `text-gray-900 font-medium`). StatusBadge uses `bg-emerald-50 text-emerald-700` (Locked) / `bg-amber-50 text-amber-700` (Pending) with `border-transparent`.
+  * Rule 6 (buttons): Primary `bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium`; Secondary/outline `border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium`. Form Lock buttons use h-10 to match the input height in the same row.
+  * Rule 7 (forms): Labels `text-xs font-semibold text-gray-700 mb-1.5` via the `Field` wrapper; required asterisk in `text-[#F26522]`. Inputs share the `inputCls` constant (h-10, rounded-lg, gray-200 border, orange focus ring). Grids are `grid-cols-1 md:grid-cols-2` (1 col mobile, 2 cols desktop).
+  * Rule 8 (empty states): rewrote `EmptyState` as a simple muted icon (`h-6 w-6 text-gray-300`) + title (`text-sm font-medium text-gray-900`) + desc (`text-xs text-gray-500`). NO big colored circles.
+  * Rule 9 (motion): removed framer-motion entirely. Replaced with a single subtle CSS fade on the router wrapper (`animate-in fade-in-0 duration-200`). NO animated banners, NO animated program bars — the program bars are now plain `bg-gray-400` divs with a static width style.
+  * Rule 10 (no emoji / glassmorphism / gradient text / blobs): confirmed none present. The BaseFeeCallout is now `bg-gray-50 border-gray-200 text-gray-600` (NOT orange-tinted) per the task spec.
+- View-by-view implementation:
+  * admissions-overview: PageHeader welcome (no banner), 4 flat KPI cards (Enrolled Students / This Month / Pending Base Fee / Base Fee Locked count), recent-admissions table (last 10, clean headers + hover rows + StatusBadge), enrollment-by-program as muted CSS bars (gray-400 on gray-100 track, no animation).
+  * admissions-new: PageHeader + gray BaseFeeCallout + 3 white cards (Personal Information, Academic Placement, Base Fee Finalization). Personal Info: name, father's name, CNIC, DOB, guardian, prev result, address (Textarea). Academic Placement: program Select, class Select (from api.getClasses), section Select (from api.reference), auto-suggested roll #, photo upload (FileReader → base64 preview). Base Fee Finalization: number input + "Finalize & Lock" button that stages the lock (disabled after staging, with "Staged for Lock" badge). Reset + Save Enrollment buttons. On save → api.createPlatformUser with all spec §2.1 fields + internal placeholder email/password (admissions doesn't create logins). Success state: white card with emerald CheckCircle2, roll#/class/fee summary, gray callout reminding Accountant issues login later, "Enroll Another" button.
+  * admissions-students: PageHeader + filter card (search Input with Search icon + class Select) + white table card. Table columns: Roll #, Name, Father, Class, Program, Base Fee, Status, Edit (ghost button with Edit icon). Edit opens right-side Sheet with personal-info fields only; if base fee is locked, shows an emerald note "Base fee is locked at PKR X — not editable here". Save calls api.editUser.
+  * admissions-base-fee: PageHeader + gray BaseFeeCallout + "Awaiting Finalization" white card (each pending student = a clean row: gray icon tile + name/meta + amount Input + orange "Lock" button → api.editUser with {baseFee, baseFeeLocked:true}) + "Locked Base Fees" read-only white card below (clean table + total in the section desc).
+- Preserved all original API calls and the optimistic-fallback pattern (on create/lock/edit errors, the UI upserts locally and shows a transparent toast). Preserved the `cancelled`-flag pattern in the load effect to avoid `react-hooks/set-state-in-effect` lint errors. Preserved the `useMemo(() => new Date(), [])` pattern so the React Compiler doesn't complain about derived month/year.
+- Lint iteration: first run after writing flagged 2 unused eslint-disable directives in my file (`react-hooks/exhaustive-deps` on the rollNo effect and `@next/next/no-img-element` on the photo <img> — both rules are turned off in eslint.config.mjs, so the disables were no-ops). Removed both directives. Re-ran `bunx eslint src/components/portal/admissions-portal.tsx` → **0 errors, 0 warnings, exit 0**. (The 7 remaining `react-hooks/set-state-in-effect` errors in the project are all pre-existing in admin-portal.tsx and out of scope for this task.)
+- TypeScript: `bunx tsc --noEmit` shows ZERO errors mentioning admissions-portal.tsx (all tsc errors are in unrelated dashboard modules, examples, and skills).
+
+Stage Summary:
+- admissions-portal.tsx fully redesigned at /home/z/my-project/src/components/portal/admissions-portal.tsx (1703 lines). Component signature unchanged: `export function AdmissionsPortal({ activeModule, user }: Props)`.
+- All 4 views reimplemented with the clean, restrained, non-agentic design: flat white cards with gray-200 borders, single orange accent line on the header, orange ONLY on primary buttons + accent + focus rings, muted gray program bars, subtle emerald/amber status badges, gray (not orange) BaseFeeCallout, no framer-motion, no gradient banners, no decorative blobs, no emoji.
+- All original functionality preserved: api.platformUsers (list students by branch), api.createPlatformUser (enroll new student with spec §2.1 fields + internal placeholder login), api.editUser (edit personal info / lock base fee), api.getClasses (populate class dropdown), api.reference (populate section dropdown). Optimistic local upsert + transparent toasts on backend failure remain so the demo flows while the backend catches up (per Task 5's known backend gaps).
+- Lint clean for my file (0 errors / 0 warnings via `bunx eslint src/components/portal/admissions-portal.tsx`). The 7 errors in `bun run lint` are pre-existing in admin-portal.tsx (react-hooks/set-state-in-effect) and not in scope.
+- TypeScript clean for my file (0 errors mentioning admissions-portal.tsx in `bunx tsc --noEmit`).
+- Known backend gaps (still NOT in scope, carried over from Task 5): (1) POST /platform/users needs `'admissions'` added to requireRole; (2) POST + PATCH /platform/users need to persist the admissions fields (fatherName, cnic, dob, address, prevResult, program, photoUrl, guardian, baseFee, baseFeeLocked). Until then, the UI uses optimistic local state + transparent toasts.
+
+---
+Task ID: 5d
+Agent: main (this session)
+Task: Redesign academic-portal.tsx with clean, natural, non-agentic UI
+
+Work Log:
+- Read existing academic-portal.tsx (915 lines) — found OLD agentic patterns: gradient orange welcome banner (line 102), bg-primary/10 icon tiles (lines 29, 134, 218, 751, 883), framer-motion.
+- Rewrote entire file (~900 lines) with clean design language matching admissions/admin/accountant portals:
+  * PageHeader: thin orange accent line + h1 + muted subtitle (NO gradient banner)
+  * StatCard: flat white card, 1px gray border, small inline muted icon (NO colored tiles)
+  * Tables: uppercase muted headers, hover row tint, subtle status badges
+  * Buttons: primary bg-[#F26522], secondary border-gray-200
+  * NO framer-motion, NO gradient banners, NO bg-primary/10, NO decorative blobs
+- All 11 views implemented: academic-overview, academic-announcements, academic-teachers (with add sheet + credentials), academic-assign, academic-students, academic-logins (teacher/student tabs), timetable (clean day grid), academic-datesheet (form + list), academic-tests, results (review marks by exam), report-cards (aggregate by student + publish)
+- Fixed react-hooks/set-state-in-effect lint error in TimetableView (removed synchronous setLoading(true) from effect body, used cancelled guard)
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- academic-portal.tsx fully redesigned with clean, professional, non-agentic UI
+- All 4 Concordia office portals (admin, admissions, accountant, academic) now follow the same clean design standard
+- Lint clean, ready for QA + push
+
+---
+Task ID: UI-OVERHAUL
+Agent: main (this session)
+Task: Complete UI overhaul per user's frustration — fix sidebar alignment, remove agentic look, remove old institute/branch portals, use new campus image, clean login page
+
+Work Log:
+- Copied user's attached Concordia campus photo to public/concordia-campus.jpg
+- Redesigned login-page.tsx: clean split layout (form left, campus photo right), removed "Excellence in Education" overlay, kept demo credentials as clickable fill buttons, NO glassmorphism
+- Switched sidebar to LIGHT theme (white bg, dark text, orange active state) in globals.css — was heavy dark charcoal, now clean professional white like Linear/Stripe
+- Redesigned sidebar in role-portal.tsx: removed role-label+campus badge (user complained about "Admission Office / Gulberg Campus"), removed orange accent bar, clean light nav items with orange active state
+- Header: replaced campus text with user avatar + name + role label
+- Permanently removed institute-admin & branch-manager:
+  * Removed from db.ts seed (deleted U-DEMO-ADMIN + U-DEMO-BRANCH, rebranded institute to "Concordia College", branch to "Main Campus")
+  * Added unconditional DELETE FROM users WHERE role IN ('institute-admin','branch-manager') that runs on every initDB()
+  * Removed from role-portal.tsx routing (no more case 'institute-admin'/'branch-manager')
+  * Removed from roleIcon map, removed unused imports
+- Verified all 4 office portals clean: admin (1695 lines), admissions (1703 lines), accountant (2579 lines), academic (900 lines) — zero gradient banners, zero bg-primary/10 icon tiles, zero framer-motion
+- Lint: 0 errors, 0 warnings
+
+Stage Summary:
+- Complete UI overhaul done — sidebar is now clean light white with orange accents
+- Login page uses the attached campus photo, no "Excellence in Education" text, clean form with clickable demo credentials
+- Old institute-admin/branch-manager portals PERMANENTLY removed — their credentials can no longer sign in
+- All 4 office portals (admin/admissions/accountant/academic) redesigned with clean, natural, pro-developer aesthetic
+- Ready for agent-browser QA + GitHub push + Vercel verification

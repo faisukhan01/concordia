@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export type View = 'landing' | 'login' | 'portal';
 
-export type Role = 'super-admin' | 'institute-admin' | 'branch-manager' | 'teacher' | 'student';
+export type Role = 'super-admin' | 'admin' | 'admissions' | 'accountant' | 'academic' | 'teacher' | 'student' | 'parent' | 'institute-admin' | 'branch-manager';
 
 export type AuthUser = {
   id: string;

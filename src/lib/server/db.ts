@@ -58,6 +58,18 @@ export async function initDB() {
   for (const sql of statements) {
     try { await db.execute(sql); } catch {}
   }
+
+  // === Column migrations for Concordia base-fee feature ===
+  // admissions office sets a one-time locked base fee per student.
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN baseFee REAL', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN baseFeeLocked INTEGER NOT NULL DEFAULT 0', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN fatherName TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN cnic TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN dob TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN address TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN prevResult TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN program TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN photoUrl TEXT', args: [] }); } catch {}
   } // end schema init block
 
   // === Data seeding — runs on EVERY call (idempotent, cheap SELECT-then-INSERT) ===
@@ -77,18 +89,18 @@ export async function initDB() {
   // Seeds a complete demo institute + branch + 5 role users + sample classes/timetable/announcements
   // so the founder can log in as any role and demo the full product to customers.
   // Idempotent — each INSERT uses OR IGNORE so partial seeds from prior deployments complete cleanly.
-  const demoAdminExists = await db.execute({ sql: 'SELECT id FROM users WHERE id = ?', args: ['U-DEMO-ADMIN'] });
+  const demoAdminExists = await db.execute({ sql: 'SELECT id FROM users WHERE id = ?', args: ['U-DEMO-TEACHER'] });
   if (demoAdminExists.rows.length === 0) {
-    // 1. Demo Institute (may already exist from a partial seed — OR IGNORE handles it)
+    // 1. Demo Institute (Concordia College) — may already exist; OR IGNORE handles it
     await db.execute({
       sql: `INSERT OR IGNORE INTO institutes (id, name, short, city, country, plan, status, adminName, adminEmail, branches, students, staff, revenue, color, domain, blocked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['I-DEMO', 'Al-Noor Public School', 'ANPS', 'Lahore', 'Pakistan', 'Premium', 'Active', 'Imran Siddiqui', 'admin@alnoor.edu', 1, 247, 18, 890000, 'emerald', 'edu', 0],
+      args: ['I-DEMO', 'Concordia College', 'CC', 'Lahore', 'Pakistan', 'Premium', 'Active', 'Concordia Admin', 'admin@concordia.edu.pk', 1, 247, 18, 890000, 'orange', 'edu', 0],
     });
 
     // 2. Demo Branch
     await db.execute({
       sql: `INSERT OR IGNORE INTO branches (id, instituteId, name, city, manager, managerEmail, students, teachers, status, blocked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['B-DEMO', 'I-DEMO', 'Gulberg Campus', 'Lahore', 'Saima Bukhari', 'branch@alnoor.edu', 247, 18, 'Active', 0],
+      args: ['B-DEMO', 'I-DEMO', 'Main Campus', 'Lahore', 'Concordia Admin', 'admin@concordia.edu.pk', 247, 18, 'Active', 0],
     });
 
     // 3. Demo Classes (3 classes)
@@ -101,31 +113,24 @@ export async function initDB() {
     await db.execute({ sql: `INSERT OR IGNORE INTO courses (id, branchId, name, code) VALUES (?, ?, ?, ?)`, args: ['CR-DEMO-PHY', 'B-DEMO', 'Physics', 'PHY101'] });
     await db.execute({ sql: `INSERT OR IGNORE INTO courses (id, branchId, name, code) VALUES (?, ?, ?, ?)`, args: ['CR-DEMO-ENG', 'B-DEMO', 'English', 'ENG101'] });
 
-    // 5. Demo Users — 5 roles (all password: demo123)
-    // Institute Admin
-    await db.execute({
-      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-DEMO-ADMIN', 'Imran Siddiqui', 'admin@alnoor.edu', 'demo123', 'institute-admin', 'Active', 'Institute Administrator', 0, 0, 'I-DEMO'],
-    });
-    // Branch Manager
-    await db.execute({
-      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-DEMO-BRANCH', 'Saima Bukhari', 'branch@alnoor.edu', 'demo123', 'branch-manager', 'Active', 'Branch Manager', 0, 0, 'I-DEMO', 'B-DEMO'],
-    });
+    // 5. Demo Users — Teacher / Student / Parent (password: demo123)
+    // NOTE: The legacy institute-admin & branch-manager demo users have been
+    // permanently removed — Concordia now uses the four office roles
+    // (admin / admissions / accountant / academic) seeded below.
     // Teacher
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, subjects, classes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-DEMO-TEACHER', 'Ayesha Khan', 'ayesha@alnoor.edu', 'T001', 'demo123', 'teacher', 'Active', 'Senior Teacher — Mathematics', 0, 0, 'I-DEMO', 'B-DEMO', JSON.stringify(['Mathematics', 'Physics']), JSON.stringify(['C-DEMO-10A', 'C-DEMO-9B'])],
+      args: ['U-DEMO-TEACHER', 'Ayesha Khan', 'ayesha@concordia.edu.pk', 'T001', 'demo123', 'teacher', 'Active', 'Senior Teacher — Mathematics', 0, 0, 'I-DEMO', 'B-DEMO', JSON.stringify(['Mathematics', 'Physics']), JSON.stringify(['C-DEMO-10A', 'C-DEMO-9B'])],
     });
     // Student
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, class, section, guardian) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-DEMO-STUDENT', 'Ali Ahmed', 'ali@alnoor.edu', 'S001', 'demo123', 'student', 'Active', 'Student — Grade 10-A', 0, 0, 'I-DEMO', 'B-DEMO', 'Grade 10', 'A', 'Ahmed Raza'],
+      args: ['U-DEMO-STUDENT', 'Ali Ahmed', 'ali@concordia.edu.pk', 'S001', 'demo123', 'student', 'Active', 'Student — Grade 10-A', 0, 0, 'I-DEMO', 'B-DEMO', 'Grade 10', 'A', 'Ahmed Raza'],
     });
     // Parent (linked to the student as ward)
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, ward, wardId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-DEMO-PARENT', 'Ahmed Raza', 'parent@alnoor.edu', 'demo123', 'parent', 'Active', 'Parent / Guardian', 0, 0, 'I-DEMO', 'B-DEMO', 'Ali Ahmed', 'U-DEMO-STUDENT'],
+      args: ['U-DEMO-PARENT', 'Ahmed Raza', 'parent@concordia.edu.pk', 'demo123', 'parent', 'Active', 'Parent / Guardian', 0, 0, 'I-DEMO', 'B-DEMO', 'Ali Ahmed', 'U-DEMO-STUDENT'],
     });
 
     // 6. Demo Timetable entries (Mon-Fri, 8 AM - 1 PM, 5 periods)
@@ -217,4 +222,64 @@ export async function initDB() {
       args: ['E-DEMO-2', 'Science Exhibition', 'Class 8-10 students showcase their science projects. Parents invited.', '2026-02-20', '2026-02-20', 'School Auditorium', 'Academic', 'I-DEMO', 'B-DEMO', 'U-DEMO-ADMIN'],
     });
   }
+
+  // ===================== CONCORDIA OFFICE ROLES SEED =====================
+  // Four dedicated office logins per the Concordia Admin Management System
+  // specification. All share password `concordia123`. Linked to the demo
+  // institute + branch so they can see the seeded demo data.
+  // Idempotent — runs on every initDB() call, INSERT OR IGNORE skips existing.
+  const concordiaAdminExists = await db.execute({ sql: 'SELECT id FROM users WHERE id = ?', args: ['U-CONCORDIA-ADMIN'] });
+  if (concordiaAdminExists.rows.length === 0) {
+    // Admin — top-level, oversees all other roles
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-CONCORDIA-ADMIN', 'Concordia Admin', 'admin@concordia.edu.pk', 'concordia123', 'admin', 'Active', 'College Administrator', 0, 0, 'I-DEMO', 'B-DEMO'],
+    });
+    // Admission Office — registers new students, finalizes base fee
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-CONCORDIA-ADMISSIONS', 'Admission Office', 'admissions@concordia.edu.pk', 'concordia123', 'admissions', 'Active', 'Admission Officer', 0, 0, 'I-DEMO', 'B-DEMO'],
+    });
+    // Accountant — fee collection, challans, installments
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-CONCORDIA-ACCOUNTANT', 'Accountant', 'accountant@concordia.edu.pk', 'concordia123', 'accountant', 'Active', 'Chief Accountant', 0, 0, 'I-DEMO', 'B-DEMO'],
+    });
+    // Academic Office — teachers, timetables, tests, results; creates teacher+student logins
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-CONCORDIA-ACADEMIC', 'Academic Office', 'academics@concordia.edu.pk', 'concordia123', 'academic', 'Active', 'Academic Coordinator', 0, 0, 'I-DEMO', 'B-DEMO'],
+    });
+  }
+
+  // ===================== LEGACY ROLE CLEANUP (unconditional) =====================
+  // Permanently remove the legacy institute-admin & branch-manager demo users so
+  // their old credentials can no longer sign in. This runs on every initDB() so
+  // existing live deployments are cleaned up automatically.
+  try {
+    await db.execute({ sql: `DELETE FROM users WHERE role IN ('institute-admin', 'branch-manager')` });
+  } catch {}
+  // Re-brand the demo institute + branch to Concordia on existing deployments.
+  try {
+    await db.execute({ sql: `UPDATE institutes SET name = 'Concordia College', short = 'CC', color = 'orange' WHERE id = 'I-DEMO'` });
+  } catch {}
+  try {
+    await db.execute({ sql: `UPDATE branches SET name = 'Main Campus', manager = 'Concordia Admin', managerEmail = 'admin@concordia.edu.pk' WHERE id = 'B-DEMO'` });
+  } catch {}
+  // Ensure the teacher/student/parent demo users exist on existing deployments
+  // (idempotent — only inserts if the row is missing).
+  try {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, subjects, classes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-DEMO-TEACHER', 'Ayesha Khan', 'ayesha@concordia.edu.pk', 'T001', 'demo123', 'teacher', 'Active', 'Senior Teacher — Mathematics', 0, 0, 'I-DEMO', 'B-DEMO', JSON.stringify(['Mathematics', 'Physics']), JSON.stringify(['C-DEMO-10A', 'C-DEMO-9B'])],
+    });
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, class, section, guardian) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-DEMO-STUDENT', 'Ali Ahmed', 'ali@concordia.edu.pk', 'S001', 'demo123', 'student', 'Active', 'Student — Grade 10-A', 0, 0, 'I-DEMO', 'B-DEMO', 'Grade 10', 'A', 'Ahmed Raza'],
+    });
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, ward, wardId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['U-DEMO-PARENT', 'Ahmed Raza', 'parent@concordia.edu.pk', 'demo123', 'parent', 'Active', 'Parent / Guardian', 0, 0, 'I-DEMO', 'B-DEMO', 'Ali Ahmed', 'U-DEMO-STUDENT'],
+    });
+  } catch {}
 }

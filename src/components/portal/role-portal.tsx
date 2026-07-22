@@ -11,27 +11,25 @@ import { Badge } from '@/components/ui/badge';
 import { BrandLogo } from '@/components/brand-logo';
 import {
   GraduationCap, Search, Bell, Menu, LogOut,
-  PanelLeftClose, PanelLeft, Crown, Building2, Users, BookOpen, User, Shield,
+  PanelLeftClose, PanelLeft, Shield,
   CheckCircle2, AlertCircle, Receipt, Award, CalendarCheck, X, Moon, Sun,
-  ChevronDown, ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import { SuperAdminPortal } from './super-admin-portal';
-import { InstituteAdminPortal } from './institute-admin-portal';
-import { BranchManagerPortal } from './branch-manager-portal';
+import { AdminPortal } from './admin-portal';
+import { AdmissionsPortal } from './admissions-portal';
+import { AccountantPortal } from './accountant-portal';
+import { AcademicPortal } from './academic-portal';
 import { TeacherPortal } from './teacher-portal';
 import { StudentPortal } from './student-portal';
+import { ParentPortal } from './parent-portal';
 import { SettingsPage } from './settings-page';
 import { CommandPalette } from './command-palette';
 import { OnboardingTips } from '@/components/onboarding/onboarding-tooltips';
 import { HelpWidget } from '@/components/ui/help-widget';
 import { api, setOnBlocked } from '@/lib/api';
-
-const roleIcon: Record<string, any> = {
-  'super-admin': Crown, 'institute-admin': Building2, 'branch-manager': Users,
-  'teacher': BookOpen, 'student': User,
-};
 
 // Notification icon + color mapping per type.
 // announcement=primary, complaint=danger, fee=gold, result=success, attendance=info
@@ -70,38 +68,35 @@ function formatRelativeTime(iso: string): string {
 
 function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule, setActiveModule, setMobileOpen, user, logout }: any) {
   const groups = ROLE_MODULES[role] || [];
-  const accent = roleAccent[role];
-  const RoleIcon = roleIcon[role] || GraduationCap;
   return (
-    <div className="flex flex-col h-full text-sidebar-foreground bg-sidebar">
-      {/* brand — fixed height with orange accent line */}
-      <div className={cn('relative flex items-center h-14 border-b border-sidebar-border shrink-0', collapsed ? 'justify-center px-2' : 'px-4 gap-2.5')}>
+    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
+      {/* ─── Brand header — fixed 64px height, perfectly aligned with the top bar ─── */}
+      <div className={cn(
+        'relative flex items-center h-16 border-b border-sidebar-border shrink-0',
+        collapsed ? 'justify-center px-2' : 'px-5'
+      )}>
         {collapsed ? (
-          <BrandLogo size="xs" variant="light" />
+          <BrandLogo size="xs" />
         ) : (
-          <BrandLogo size="sm" variant="light" />
+          <BrandLogo size="sm" />
         )}
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#F26522]/60 to-transparent" />
       </div>
 
+      {/* ─── Modules nav — restrained, consistent spacing, no role/campus badge ─── */}
       <nav className="flex-1 overflow-y-auto scroll-fancy px-3 py-4">
         <div className="space-y-5">
           {groups.map((group: any) => {
             const isOpen = groupOpen[group.group];
             return (
               <div key={group.group}>
+                {/* Section header — small caps, muted, subtle */}
                 {!collapsed && (
                   <button
                     onClick={() => setGroupOpen((g: any) => ({ ...g, [group.group]: !g[group.group] }))}
-                    className="w-full flex items-center justify-between px-3 mb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-sidebar-foreground/55 hover:text-sidebar-foreground/85 transition-colors"
+                    className="w-full flex items-center justify-between px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="h-1 w-1 rounded-full bg-[#F26522]" />
-                      {group.group}
-                    </span>
-                    {isOpen !== undefined && (
-                      <ChevronDown className={cn('h-3 w-3 transition-transform', !isOpen && '-rotate-90')} />
-                    )}
+                    <span>{group.group}</span>
+                    <ChevronDown className={cn('h-3 w-3 transition-transform', !isOpen && '-rotate-90')} />
                   </button>
                 )}
                 <div className={cn(!isOpen && !collapsed && 'hidden')}>
@@ -114,21 +109,18 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
                           onClick={() => { setActiveModule(m.id); setMobileOpen(false); }}
                           title={collapsed ? m.name : undefined}
                           className={cn(
-                            'group relative w-full flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-150',
+                            'group relative w-full flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-150',
                             collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
                             isActive
-                              ? 'bg-[#F26522] text-white shadow-md shadow-[#F26522]/25'
-                              : 'text-sidebar-foreground/80 hover:bg-white/[0.06] hover:text-white'
+                              ? 'bg-[#F26522] text-white shadow-sm shadow-[#F26522]/20'
+                              : 'text-gray-600 hover:bg-[#FFF0E8] hover:text-[#F26522]'
                           )}
                         >
                           <m.icon className={cn(
-                            'h-[18px] w-[18px] shrink-0 transition-colors',
-                            isActive ? 'text-white' : 'text-sidebar-foreground/60 group-hover:text-[#FF8C42]'
+                            'h-[17px] w-[17px] shrink-0 transition-colors',
+                            isActive ? 'text-white' : 'text-gray-400 group-hover:text-[#F26522]'
                           )} />
                           {!collapsed && <span className="truncate flex-1 text-left">{m.name}</span>}
-                          {!collapsed && isActive && (
-                            <ChevronRight className="h-3.5 w-3.5 text-white/80 shrink-0" />
-                          )}
                         </button>
                       );
                     })}
@@ -140,10 +132,11 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
         </div>
       </nav>
 
+      {/* ─── User card — minimal, clean, aligned with nav ─── */}
       <div className="border-t border-sidebar-border p-3 shrink-0">
         {!collapsed ? (
-          <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] p-2.5">
-            <Avatar className="h-9 w-9 shrink-0 ring-2 ring-[#F26522]/20">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-[#FFF0E8] transition-colors group">
+            <Avatar className="h-9 w-9 shrink-0 ring-1 ring-gray-200">
               <AvatarFallback
                 className="text-white text-xs font-bold"
                 style={{ background: 'linear-gradient(135deg, #F26522 0%, #D4541E 100%)' }}
@@ -152,15 +145,15 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold text-white truncate">{user?.name || 'User'}</div>
-              <div className="text-[10px] text-sidebar-foreground/55 truncate">{user?.roleLabel}</div>
+              <div className="text-[13px] font-semibold text-[#1A1A1A] truncate">{user?.name || 'User'}</div>
+              <div className="text-[11px] text-gray-400 truncate">{user?.email}</div>
             </div>
-            <button onClick={logout} title="Sign out" className="h-8 w-8 grid place-items-center rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-rose-500/20 transition-colors shrink-0">
+            <button onClick={logout} title="Sign out" className="h-8 w-8 grid place-items-center rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         ) : (
-          <button onClick={logout} title="Sign out" className="w-full h-10 grid place-items-center rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-rose-500/20 transition-colors">
+          <button onClick={logout} title="Sign out" className="w-full h-10 grid place-items-center rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
             <LogOut className="h-4 w-4" />
           </button>
         )}
@@ -237,7 +230,6 @@ export function RolePortal() {
     Object.fromEntries(groups.map((g: any) => [g.group, true]))
   );
   const accent = roleAccent[role];
-  const RoleIcon = roleIcon[role] || GraduationCap;
 
   // Register global blocked handler — when API returns 403/401 with "blocked",
   // show the blocked screen instead of silent errors
@@ -281,10 +273,13 @@ export function RolePortal() {
     if (activeModule === 'settings') return <SettingsPage user={user} />;
     switch (role) {
       case 'super-admin': return <SuperAdminPortal activeModule={activeModule} user={user} />;
-      case 'institute-admin': return <InstituteAdminPortal activeModule={activeModule} user={user} />;
-      case 'branch-manager': return <BranchManagerPortal activeModule={activeModule} user={user} />;
+      case 'admin': return <AdminPortal activeModule={activeModule} user={user} />;
+      case 'admissions': return <AdmissionsPortal activeModule={activeModule} user={user} />;
+      case 'accountant': return <AccountantPortal activeModule={activeModule} user={user} />;
+      case 'academic': return <AcademicPortal activeModule={activeModule} user={user} />;
       case 'teacher': return <TeacherPortal activeModule={activeModule} user={user} />;
       case 'student': return <StudentPortal activeModule={activeModule} user={user} />;
+      case 'parent': return <ParentPortal activeModule={activeModule} user={user} />;
       default: return <StudentPortal activeModule={activeModule} user={user} />;
     }
   };
@@ -324,7 +319,7 @@ export function RolePortal() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className={cn('hidden lg:flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 fixed inset-y-0 left-0 z-30', collapsed ? 'w-[68px]' : 'w-64')}>
+      <aside className={cn('hidden lg:flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 fixed inset-y-0 left-0 z-30', collapsed ? 'w-[72px]' : 'w-[260px]')}>
         <SidebarContent {...sidebarProps} />
       </aside>
 
@@ -332,15 +327,15 @@ export function RolePortal() {
         {mobileOpen && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobileOpen(false)} className="lg:hidden fixed inset-0 bg-black/50 z-40" />
-            <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="lg:hidden fixed inset-y-0 left-0 z-50 w-64 bg-sidebar">
+            <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="lg:hidden fixed inset-y-0 left-0 z-50 w-[260px] bg-sidebar">
               <SidebarContent {...sidebarProps} />
             </motion.aside>
           </>
         )}
       </AnimatePresence>
 
-      <div className={cn('flex-1 flex flex-col min-w-0', collapsed ? 'lg:ml-[68px]' : 'lg:ml-64')}>
-        <header className="sticky top-0 z-20 h-14 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
+      <div className={cn('flex-1 flex flex-col min-w-0', collapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]')}>
+        <header className="sticky top-0 z-20 h-16 bg-card border-b border-border flex items-center gap-3 px-4 sm:px-6">
           <button onClick={() => setMobileOpen(true)} className="lg:hidden h-8 w-8 grid place-items-center rounded-md hover:bg-accent">
             <Menu className="h-5 w-5" />
           </button>
@@ -471,8 +466,19 @@ export function RolePortal() {
                 </div>
               )}
             </div>
-            <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-border">
-              <span className="text-xs text-muted-foreground truncate max-w-[140px]">{user?.campus}</span>
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-border">
+              <Avatar className="h-8 w-8 ring-1 ring-gray-200">
+                <AvatarFallback
+                  className="text-white text-[11px] font-bold"
+                  style={{ background: 'linear-gradient(135deg, #F26522 0%, #D4541E 100%)' }}
+                >
+                  {(user?.name || 'A').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden md:block leading-tight">
+                <div className="text-[13px] font-semibold text-[#1A1A1A] truncate max-w-[160px]">{user?.name}</div>
+                <div className="text-[11px] text-gray-400 truncate max-w-[160px]">{user?.roleLabel}</div>
+              </div>
             </div>
           </div>
         </header>

@@ -1,10 +1,13 @@
-// Role-scoped module catalogs — each role sees a different sidebar
+// Role-scoped module catalogs — each role sees a different sidebar.
+// Concordia College structure per the Admin Management System spec:
+//   super-admin, admin, admissions, accountant, academic, teacher, student, parent
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Building2, Network, Users, DollarSign, TrendingUp, Settings, ShieldCheck,
   CalendarCheck, GraduationCap, BookOpen, MessageSquare, Library, Bus, Trophy, Landmark,
   ClipboardList, FileText, Bell, CreditCard, Calendar, MessageCircleWarning, Award, Crown,
   Navigation, IdCard, Wallet, Video, HeartPulse, FileCheck, AlertTriangle, UserPlus,
+  UserCog, Receipt, CalendarDays, FileSpreadsheet, Megaphone, BookMarked, KeyRound,
 } from 'lucide-react';
 
 export type RoleModule = {
@@ -18,7 +21,7 @@ export type RoleModules = {
   [role: string]: { group: string; items: RoleModule[] }[];
 };
 
-// Navy blue professional palette — clean, minimal, UCP/Odoo-inspired.
+// Concordia orange professional palette.
 // `from-primary to-primary/80` is the primary module gradient; `from-primary/80 to-primary`
 // is used for secondary modules. Rose is reserved for destructive/block actions only.
 export const ROLE_MODULES: RoleModules = {
@@ -32,6 +35,113 @@ export const ROLE_MODULES: RoleModules = {
     { group: 'System', items: [
       { id: 'config', name: 'Platform Config', icon: Settings, color: 'from-primary/80 to-primary' },
       { id: 'branding', name: 'Branding', icon: ShieldCheck, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Account', items: [
+      { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
+    ]},
+  ],
+  // ─────────────────────────────────────────────────────────────
+  // Admin — top-level, oversees all other roles (per Concordia spec §1.1)
+  //
+  // The Admin sidebar includes dropdown groups for each office portal so the
+  // admin can access every sub-portal's modules directly. Clicking a group
+  // header expands it to reveal that office's modules.
+  // ─────────────────────────────────────────────────────────────
+  'admin': [
+    { group: 'Overview', items: [
+      { id: 'admin-overview', name: 'Dashboard', icon: LayoutDashboard, color: 'from-primary to-primary/80' },
+      { id: 'admin-analytics', name: 'Analytics', icon: TrendingUp, color: 'from-primary to-primary/80' },
+      { id: 'announcements', name: 'Announcements', icon: Megaphone, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'People', items: [
+      { id: 'admin-students', name: 'Students', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'admin-teachers', name: 'Teachers', icon: Users, color: 'from-primary to-primary/80' },
+      { id: 'admin-staff', name: 'Office Staff', icon: UserCog, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Admission Office', items: [
+      { id: 'admissions-new', name: 'New Enrollment', icon: UserPlus, color: 'from-primary to-primary/80' },
+      { id: 'admissions-students', name: 'Student Records', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Accountant', items: [
+      { id: 'accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'accountant-collect', name: 'Collect Payment', icon: CreditCard, color: 'from-primary to-primary/80' },
+      { id: 'accountant-challans', name: 'Fee Challans', icon: Receipt, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-installments', name: 'Installments', icon: ClipboardList, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-logins', name: 'Student Logins', icon: KeyRound, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Academic Office', items: [
+      { id: 'academic-teachers', name: 'Teachers', icon: Users, color: 'from-primary to-primary/80' },
+      { id: 'academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: 'from-primary/80 to-primary' },
+      { id: 'academic-logins', name: 'Create Logins', icon: KeyRound, color: 'from-primary to-primary/80' },
+      { id: 'timetable', name: 'Timetable', icon: Calendar, color: 'from-primary/80 to-primary' },
+      { id: 'academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: 'from-primary/80 to-primary' },
+      { id: 'academic-tests', name: 'Monthly Tests', icon: FileText, color: 'from-primary to-primary/80' },
+      { id: 'results', name: 'Review Marks', icon: ClipboardList, color: 'from-primary/80 to-primary' },
+      { id: 'report-cards', name: 'Result Cards', icon: Award, color: 'from-primary to-primary/80' },
+    ]},
+    { group: 'Reports & Events', items: [
+      { id: 'admin-fees', name: 'Fee Management', icon: CreditCard, color: 'from-primary to-primary/80' },
+      { id: 'admin-reports', name: 'Reports', icon: FileSpreadsheet, color: 'from-primary/80 to-primary' },
+      { id: 'events', name: 'Events', icon: Trophy, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Account', items: [
+      { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
+    ]},
+  ],
+  // ─────────────────────────────────────────────────────────────
+  // Admission Office — registers students + finalizes (locks) base fee
+  // ─────────────────────────────────────────────────────────────
+  'admissions': [
+    { group: 'Enrollment', items: [
+      { id: 'admissions-overview', name: 'Dashboard', icon: LayoutDashboard, color: 'from-primary to-primary/80' },
+      { id: 'admissions-new', name: 'New Enrollment', icon: UserPlus, color: 'from-primary to-primary/80' },
+      { id: 'admissions-students', name: 'Student Records', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Account', items: [
+      { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
+    ]},
+  ],
+  // ─────────────────────────────────────────────────────────────
+  // Accountant — fee collection, challans, installments, misc charges
+  // ─────────────────────────────────────────────────────────────
+  'accountant': [
+    { group: 'Finance', items: [
+      { id: 'accountant-overview', name: 'Dashboard', icon: LayoutDashboard, color: 'from-primary to-primary/80' },
+      { id: 'accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'accountant-collect', name: 'Collect Payment', icon: CreditCard, color: 'from-primary to-primary/80' },
+      { id: 'accountant-challans', name: 'Fee Challans', icon: Receipt, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-installments', name: 'Installments', icon: ClipboardList, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: 'from-primary/80 to-primary' },
+      { id: 'accountant-logins', name: 'Student Logins', icon: KeyRound, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Account', items: [
+      { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
+    ]},
+  ],
+  // ─────────────────────────────────────────────────────────────
+  // Academic Office — teachers, timetables, date sheets, tests, results,
+  // and creates teacher + student login credentials
+  // ─────────────────────────────────────────────────────────────
+  'academic': [
+    { group: 'Overview', items: [
+      { id: 'academic-overview', name: 'Dashboard', icon: LayoutDashboard, color: 'from-primary to-primary/80' },
+      { id: 'academic-announcements', name: 'Announcements', icon: Megaphone, color: 'from-primary/80 to-primary' },
+    ]},
+    { group: 'Staff & Students', items: [
+      { id: 'academic-teachers', name: 'Teachers', icon: Users, color: 'from-primary to-primary/80' },
+      { id: 'academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: 'from-primary/80 to-primary' },
+      { id: 'academic-students', name: 'Students', icon: GraduationCap, color: 'from-primary/80 to-primary' },
+      { id: 'academic-logins', name: 'Create Logins', icon: KeyRound, color: 'from-primary to-primary/80' },
+    ]},
+    { group: 'Academics', items: [
+      { id: 'timetable', name: 'Timetable', icon: Calendar, color: 'from-primary/80 to-primary' },
+      { id: 'academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: 'from-primary/80 to-primary' },
+      { id: 'academic-tests', name: 'Monthly Tests', icon: FileText, color: 'from-primary to-primary/80' },
+      { id: 'results', name: 'Review Marks', icon: ClipboardList, color: 'from-primary/80 to-primary' },
+      { id: 'report-cards', name: 'Result Cards', icon: Award, color: 'from-primary to-primary/80' },
     ]},
     { group: 'Account', items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
@@ -126,12 +236,31 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
     ]},
   ],
+  'parent': [
+    { group: 'My Portal', items: [
+      { id: 'student-overview', name: 'Dashboard', icon: LayoutDashboard, color: 'from-primary to-primary/80' },
+      { id: 'my-results', name: 'Results', icon: GraduationCap, color: 'from-primary to-primary/80' },
+      { id: 'my-report-card', name: 'Report Card', icon: Award, color: 'from-primary to-primary/80' },
+      { id: 'my-attendance', name: 'Attendance', icon: CalendarCheck, color: 'from-primary/80 to-primary' },
+      { id: 'my-announcements', name: 'Announcements', icon: Bell, color: 'from-primary/80 to-primary' },
+      { id: 'my-timetable', name: 'Timetable', icon: Calendar, color: 'from-primary/80 to-primary' },
+      { id: 'complaint-portal', name: 'Complaint Portal', icon: AlertTriangle, color: 'from-rose-500 to-orange-600' },
+    ]},
+    { group: 'Account', items: [
+      { id: 'settings', name: 'Settings', icon: Settings, color: 'from-primary/80 to-primary' },
+    ]},
+  ],
 };
 
 export const roleAccent: Record<string, { from: string; to: string; text: string; bg: string }> = {
   'super-admin': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
+  'admin': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
+  'admissions': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
+  'accountant': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
+  'academic': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
   'institute-admin': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
   'branch-manager': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
   'teacher': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
   'student': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
+  'parent': { from: 'from-primary', to: 'to-primary/80', text: 'text-primary', bg: 'bg-primary/10' },
 };

@@ -79,6 +79,11 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
           const r = registerFailedAttempt(rateKey);
           return NextResponse.json({ error: r.error }, { status: r.status });
         }
+        // Permanently block legacy roles that have been replaced by Concordia
+        // office roles (admin / admissions / accountant / academic).
+        if (u.role === 'institute-admin' || u.role === 'branch-manager') {
+          return NextResponse.json({ error: 'This account type has been retired. Please use your Concordia office credentials.' }, { status: 403 });
+        }
         if (u.status !== 'Active') return NextResponse.json({ error: 'Account is ' + u.status }, { status: 403 });
 
         let blockedMessage: string | null = null;

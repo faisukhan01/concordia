@@ -69,13 +69,16 @@
   --chart-3: oklch(0.530 0.207 22.3);        /* #C8102E deep red */
   --chart-4: oklch(0.821 0.149 72.1);        /* #FFB347 peach */
   --chart-5: oklch(0.424 0.072 59.3);        /* #6B4423 brown */
-  --sidebar: oklch(0.234 0.008 59.2);        /* #211D1A warm dark charcoal */
-  --sidebar-foreground: oklch(0.965 0.003 84.6); /* warm off-white text */
+  /* Clean light sidebar — white surface, dark text, orange active state.
+     A light sidebar reads as professional & restrained (Linear / Stripe / Vercel
+     pattern) rather than the heavy "agentic" dark-charcoal look. */
+  --sidebar: oklch(1 0 0);                   /* pure white sidebar surface */
+  --sidebar-foreground: oklch(0.218 0 0);    /* #1A1A1A dark text */
   --sidebar-primary: oklch(0.676 0.189 42);  /* orange selected item */
-  --sidebar-primary-foreground: oklch(1 0 0); /* white text on orange */
-  --sidebar-accent: oklch(0.284 0.008 59.3); /* #2D2926 lighter charcoal hover */
-  --sidebar-accent-foreground: oklch(0.965 0.003 84.6);
-  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-primary-foreground: oklch(1 0 0);/* white text on orange */
+  --sidebar-accent: oklch(0.965 0.019 50.2); /* #FFF0E8 light orange hover */
+  --sidebar-accent-foreground: oklch(0.676 0.189 42); /* orange text on hover */
+  --sidebar-border: oklch(0.927 0.012 84.6); /* warm light gray border */
   --sidebar-ring: oklch(0.676 0.189 42);     /* orange ring in sidebar */
 }
 
