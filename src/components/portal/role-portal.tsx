@@ -226,15 +226,11 @@ export function RolePortal() {
 
   const role = user?.role || 'student';
   const groups = ROLE_MODULES[role] || [];
-  // For the admin role, sub-portal dropdown groups (Admission Office,
-  // Accountant, Academic Office, Teacher, Student, Parent) start COLLAPSED
-  // so the sidebar stays clean. Admin-native groups (Overview, People,
-  // Reports & Events, Account) stay open. All other roles: all groups open.
-  const SUB_PORTAL_GROUPS = new Set([
-    'Admission Office', 'Accountant', 'Academic Office', 'Teacher', 'Student', 'Parent',
-  ]);
+  // All sidebar groups start expanded. The admin role now uses a clean
+  // hub approach (single entries per sub-portal, no dropdowns), so there
+  // are no sub-portal groups to collapse.
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(
-    Object.fromEntries(groups.map((g: any) => [g.group, role === 'admin' ? !SUB_PORTAL_GROUPS.has(g.group) : true]))
+    Object.fromEntries(groups.map((g: any) => [g.group, true]))
   );
   const accent = roleAccent[role];
 
@@ -284,7 +280,32 @@ export function RolePortal() {
   }, [activeModule]);
 
   const allModules = useMemo(() => groups.flatMap((g: any) => g.items), [groups]);
-  const active = allModules.find((m: any) => m.id === activeModule) || allModules[0] || { id: 'none', name: 'Home', icon: GraduationCap, color: 'from-primary to-primary/80' };
+
+  // Resolve the active module for the header title.
+  // For admin sub-portal modules (format `role:moduleId`), look up the
+  // module name in that role's module catalog so the header shows the
+  // correct title (e.g. "New Enrollment" instead of "Admission Office").
+  const active = useMemo(() => {
+    // Direct match in this role's sidebar
+    const direct = allModules.find((m: any) => m.id === activeModule);
+    if (direct) return direct;
+    // Namespaced sub-portal module (admin viewing a sub-portal's module)
+    if (activeModule && activeModule.includes(':')) {
+      const [ns, modId] = activeModule.split(':', 2);
+      if (modId === '__hub__') {
+        // Hub view — find the portal entry in the admin sidebar
+        const hubEntry = allModules.find((m: any) => m.id === activeModule);
+        if (hubEntry) return hubEntry;
+      }
+      // Look up the module in the sub-portal's catalog
+      const subGroups = ROLE_MODULES[ns];
+      if (subGroups) {
+        const subMod = subGroups.flatMap((g: any) => g.items).find((m: any) => m.id === modId);
+        if (subMod) return subMod;
+      }
+    }
+    return allModules[0] || { id: 'none', name: 'Home', icon: GraduationCap, color: 'from-primary to-primary/80' };
+  }, [allModules, activeModule]);
 
   const renderPortal = () => {
     if (activeModule === 'settings') return <SettingsPage user={user} />;

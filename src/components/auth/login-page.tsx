@@ -112,17 +112,20 @@ export function LoginPage() {
             transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             className="w-full max-w-[400px]"
           >
-            <div className="rounded-2xl bg-white/95 backdrop-blur-xl shadow-2xl shadow-black/30 ring-1 ring-black/5 px-8 py-10">
-              {/* Logo */}
+            {/* Transparent glassmorphism card — lets the campus photo show through */}
+            <div className="rounded-2xl bg-white/10 backdrop-blur-xl shadow-2xl shadow-black/30 ring-1 ring-white/25 px-8 py-10">
+              {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
-                <BrandLogo size="lg" priority />
+                <div className="rounded-xl bg-white px-5 py-3 shadow-lg shadow-black/10">
+                  <BrandLogo size="lg" priority />
+                </div>
               </div>
 
               {/* Heading */}
-              <h1 className="text-[26px] leading-tight font-bold text-[#1A1A1A] tracking-tight text-center">
+              <h1 className="text-[26px] leading-tight font-bold text-white tracking-tight text-center drop-shadow-sm">
                 Sign in
               </h1>
-              <p className="text-sm text-gray-500 mt-1.5 text-center">
+              <p className="text-sm text-white/70 mt-1.5 text-center">
                 Use your Concordia account to continue
               </p>
 
@@ -130,7 +133,7 @@ export function LoginPage() {
               <form onSubmit={handleSubmit} className="mt-7 space-y-3.5">
                 {/* Username */}
                 <div className="relative">
-                  <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-gray-400 pointer-events-none" />
+                  <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-white/50 pointer-events-none" />
                   <input
                     id="login-email"
                     type="text"
@@ -138,13 +141,13 @@ export function LoginPage() {
                     onChange={e => setEmail(e.target.value)}
                     autoComplete="username"
                     placeholder="Enter Username"
-                    className="w-full h-12 pl-11 pr-4 rounded-xl border border-gray-200 bg-gray-50/80 text-[#1A1A1A] text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
+                    className="w-full h-12 pl-11 pr-4 rounded-xl border border-white/20 bg-white/10 text-white text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white/20 focus:ring-2 focus:ring-[#F26522]/30 placeholder:text-white/50"
                   />
                 </div>
 
                 {/* Password */}
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-gray-400 pointer-events-none" />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] text-white/50 pointer-events-none" />
                   <input
                     id="login-password"
                     type={showPassword ? 'text' : 'password'}
@@ -152,12 +155,12 @@ export function LoginPage() {
                     onChange={e => setPassword(e.target.value)}
                     autoComplete="current-password"
                     placeholder="Enter Password"
-                    className="w-full h-12 pl-11 pr-11 rounded-xl border border-gray-200 bg-gray-50/80 text-[#1A1A1A] text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white focus:ring-2 focus:ring-[#F26522]/15 placeholder:text-gray-400"
+                    className="w-full h-12 pl-11 pr-11 rounded-xl border border-white/20 bg-white/10 text-white text-sm outline-none transition-all focus:border-[#F26522] focus:bg-white/20 focus:ring-2 focus:ring-[#F26522]/30 placeholder:text-white/50"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(s => !s)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#F26522] transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}

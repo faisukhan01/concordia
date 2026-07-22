@@ -74,8 +74,94 @@ import { AcademicPortal } from './academic-portal';
 import { TeacherPortal } from './teacher-portal';
 import { StudentPortal } from './student-portal';
 import { ParentPortal } from './parent-portal';
+import { ROLE_MODULES, SUB_PORTAL_META } from '@/lib/role-modules';
+import { useApp } from '@/lib/store';
+import { ArrowLeft, Grid3x3 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
+
+// ───────────────────────── Portal Hub ─────────────────────────
+//
+// When the admin clicks a portal entry in the sidebar (e.g. "Admission
+// Office"), this page renders a clean grid of module cards. Clicking a
+// card navigates to that module's sub-portal view. This keeps the admin
+// sidebar minimal while giving full access to every sub-portal.
+
+function PortalHub({ role, setActiveModule }: { role: string; setActiveModule: (id: string) => void }) {
+  const meta = SUB_PORTAL_META[role];
+  const groups = ROLE_MODULES[role] || [];
+  const allModules = groups.flatMap(g => g.items).filter(m => m.id !== 'settings');
+
+  return (
+    <div className="space-y-6 animate-in fade-in-0 duration-200">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-10 w-10 rounded-xl bg-[#FFF0E8] grid place-items-center">
+            {meta && <meta.icon className="h-5 w-5 text-[#F26522]" />}
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-[#1A1A1A] tracking-tight">{meta?.label || 'Portal'}</h1>
+            <p className="text-sm text-gray-500">{meta?.description}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Module cards grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {allModules.map((m) => {
+          const Icon = m.icon;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setActiveModule(`${role}:${m.id}`)}
+              className="group text-left rounded-xl border border-gray-200 bg-white p-5 hover:border-[#F26522] hover:shadow-md hover:shadow-[#F26522]/5 transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <div className="h-11 w-11 rounded-xl bg-[#FFF0E8] grid place-items-center shrink-0 group-hover:bg-[#F26522] transition-colors">
+                  <Icon className="h-5 w-5 text-[#F26522] group-hover:text-white transition-colors" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm text-[#1A1A1A] group-hover:text-[#F26522] transition-colors">
+                    {m.name}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    Open {m.name.toLowerCase()} →
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {allModules.length === 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+          <Inbox className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">No modules configured for this portal.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Wrapper that shows a "back to hub" breadcrumb above the sub-portal view
+function SubPortalWrapper({ role, children, setActiveModule }: { role: string; children: React.ReactNode; setActiveModule: (id: string) => void }) {
+  const meta = SUB_PORTAL_META[role];
+  return (
+    <div className="animate-in fade-in-0 duration-200">
+      {/* Breadcrumb back to hub */}
+      <button
+        onClick={() => setActiveModule(`${role}:__hub__`)}
+        className="mb-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-[#F26522] transition-colors"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to {meta?.label || 'Portal'}
+      </button>
+      {children}
+    </div>
+  );
+}
 
 // ───────────────────────── Shared helpers ─────────────────────────
 
@@ -1676,23 +1762,34 @@ function ComingSoon({ title }: { title: string }) {
 // This gives the admin the EXACT same UI as each dedicated role portal.
 
 export function AdminPortal({ activeModule, user }: Props) {
+  const setActiveModule = useApp(s => s.setActiveModule);
+
   // ── Sub-portal delegation (namespaced modules) ──
+  // Format: `role:moduleId` where moduleId is either `__hub__` (show the
+  // portal hub grid) or an actual module ID (render the sub-portal view).
   if (activeModule && activeModule.includes(':')) {
     const [ns, modId] = activeModule.split(':', 2);
     const subModule = modId || '';
+
+    // Hub view — show module cards for this role
+    if (subModule === '__hub__') {
+      return <PortalHub role={ns} setActiveModule={setActiveModule} />;
+    }
+
+    // Sub-portal view — delegate to the dedicated portal component
     switch (ns) {
       case 'admissions':
-        return <div className="animate-in fade-in-0 duration-200"><AdmissionsPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><AdmissionsPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
       case 'accountant':
-        return <div className="animate-in fade-in-0 duration-200"><AccountantPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><AccountantPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
       case 'academic':
-        return <div className="animate-in fade-in-0 duration-200"><AcademicPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><AcademicPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
       case 'teacher':
-        return <div className="animate-in fade-in-0 duration-200"><TeacherPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><TeacherPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
       case 'student':
-        return <div className="animate-in fade-in-0 duration-200"><StudentPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><StudentPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
       case 'parent':
-        return <div className="animate-in fade-in-0 duration-200"><ParentPortal activeModule={subModule} user={user} /></div>;
+        return <SubPortalWrapper role={ns} setActiveModule={setActiveModule}><ParentPortal activeModule={subModule} user={user} /></SubPortalWrapper>;
     }
   }
 
