@@ -23,7 +23,6 @@ import { AccountantPortal } from './accountant-portal';
 import { AcademicPortal } from './academic-portal';
 import { TeacherPortal } from './teacher-portal';
 import { StudentPortal } from './student-portal';
-import { ParentPortal } from './parent-portal';
 import { SettingsPage } from './settings-page';
 import { CommandPalette } from './command-palette';
 import { OnboardingTips } from '@/components/onboarding/onboarding-tooltips';
@@ -321,7 +320,7 @@ export function RolePortal() {
       case 'academic': return <AcademicPortal activeModule={activeModule} user={user} />;
       case 'teacher': return <TeacherPortal activeModule={activeModule} user={user} />;
       case 'student': return <StudentPortal activeModule={activeModule} user={user} />;
-      case 'parent': return <ParentPortal activeModule={activeModule} user={user} />;
+      case 'parent': return <StudentPortal activeModule={activeModule} user={user} />;
       default: return <StudentPortal activeModule={activeModule} user={user} />;
     }
   };

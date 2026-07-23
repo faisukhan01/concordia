@@ -226,19 +226,24 @@ export const ROLE_MODULES: RoleModules = {
   ],
 
   // ═══════════════════════════════════════════════════════════════
-  // Parent — view-only, mirrors the Student role exactly (spec §6.2)
+  // Parent — view-only, mirrors the Student role exactly (spec §6.2).
+  //
+  // NOTE: Parents log in using the STUDENT's credentials, so there is no
+  // separate parent portal UI. The parent role reuses the exact same
+  // Student sidebar modules (student-*) and renders the StudentPortal
+  // component. See role-portal.tsx → case 'parent'.
   // ═══════════════════════════════════════════════════════════════
   'parent': [
     { group: 'My Portal', items: [
-      { id: 'parent-dashboard', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
-      { id: 'parent-results', name: 'Results', icon: GraduationCap, color: PRIMARY },
-      { id: 'parent-report-card', name: 'Report Card', icon: Award, color: PRIMARY },
-      { id: 'parent-attendance', name: 'Attendance', icon: CalendarCheck, color: SECONDARY },
-      { id: 'parent-timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
-      { id: 'parent-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
-      { id: 'parent-announcements', name: 'Announcements', icon: Bell, color: SECONDARY },
+      { id: 'student-dashboard', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
+      { id: 'student-results', name: 'Results', icon: GraduationCap, color: PRIMARY },
+      { id: 'student-report-card', name: 'Report Card', icon: Award, color: PRIMARY },
+      { id: 'student-attendance', name: 'Attendance', icon: CalendarCheck, color: SECONDARY },
+      { id: 'student-timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
+      { id: 'student-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
+      { id: 'student-announcements', name: 'Announcements', icon: Bell, color: SECONDARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],

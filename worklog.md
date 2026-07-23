@@ -1515,3 +1515,93 @@ Stage Summary:
 - GitHub (faisukhan01/concordia) HEAD = 8877f6e, in sync with local
 - Vercel (concordia-eight.vercel.app) live, verified rgba(255,255,255,0.035)
 - User needs to hard-refresh browser (Ctrl+Shift+R) to see the updated card
+
+---
+Task ID: 3-teacher-portal
+Agent: full-stack-developer
+Task: Rebuild Teacher portal UI — clean, aesthetic, allocation-restricted
+
+Work Log:
+- Read worklog.md (esp. RESEARCH-WEB) and the existing teacher-portal.tsx (1399 lines) to map current structure, API usage, and the design language enforced by admissions / academic / student portals.
+- Read /src/lib/api.ts to confirm the teacher API surface: getTeacherClasses, platformUsers, getAttendance, markAttendance, getResults, postResults, getAnnouncements, createAnnouncement, deleteAnnouncement, getTimetable, getNotifications.
+- Read /src/lib/role-modules.ts to confirm the EXACT 7 teacher modules + settings (flat): teacher-dashboard, teacher-classes, teacher-attendance, teacher-results, teacher-feedback, teacher-announcements, teacher-timetable.
+- Read /src/lib/server/handler.ts (lines 524-543, 820-886, 1464-1559) to verify: teacher/classes returns ONLY allocated classes via teacher_class_courses; attendance POST upserts on (classId+date+branchId); results POST stores teacherId; announcements POST requires title+message. No dedicated /api/feedback endpoint exists — kept the existing pattern (best-effort POST /api/feedback + local history).
+- Rewrote /src/components/portal/teacher-portal.tsx (~2200 lines) with the exact structure required by the task spec:
+  1. Header comment describing spec §5 + design language
+  2. Imports (React, api, store, shadcn/ui, lucide-react)
+  3. Types (TeacherClass, Student, AttendanceStatus, Props)
+  4. Shared constants (PRIMARY, DAYS, COMMON_TESTS, FEEDBACK_CATEGORIES, inputCls, selectTriggerCls, btnPrimary, btnSecondary, SCROLLBAR_CLS)
+  5. Shared helpers (PageHeader with h-0.5 w-8 bg-[#F26522] accent, StatCard, SectionHeader, Skeleton, SkeletonTable, EmptyState, Field, AttendanceBadge, ReviewBadge, fmtDate, fmtDateTime, todayISO)
+  6. useTeacherData hook (loads classes + students once; allocation enforced via api.getTeacherClasses only)
+  7. studentsForClass helper (matches on branchId + name + section)
+  8. authHeaders helper (for feedback POST)
+  9. Seven module components, each with a clear section banner comment:
+     - TeacherDashboard — 4 StatCards + today's timetable + quick actions + my allocated classes peek
+     - TeacherClasses — search + table + detail Sheet with roster
+     - TeacherAttendance — class+date selectors + "All Present/Absent" quick actions + roster with P/A/L toggle + sticky submit bar
+     - TeacherResults — 4 selectors (test/class/subject/total) + marks entry table + recent submissions table + sticky submit bar
+     - TeacherFeedback — 2-col form + 1-col live preview + recent feedback list with custom scrollbar
+     - TeacherAnnouncements — 2-col compose + 3-col history list with delete
+     - TeacherTimetable — weekly grid Mon–Sat × periods with today highlighted orange
+ 10. Main TeacherPortal export with switch on activeModule; strips 'teacher:' namespace for admin hub access; returns null for 'settings' (handled by parent RolePortal).
+- Design system adhered to strictly: orange #F26522 used ONLY for primary buttons, active row states, today's column highlight, the h-0.5 w-8 section accent line, and small category badges in feedback preview/recent. No gradients, no glassmorphism, no colored icon tiles, no framer-motion. White cards on border-gray-200 rounded-xl with hover:shadow-sm on interactive cards. Tables use uppercase muted headers (text-xs font-medium uppercase tracking-wide text-gray-500) and hover:bg-gray-50 row tint.
+- Polished UX details: sticky submit bars with backdrop-blur for attendance + results, sticky table headers inside max-h-96 overflow-y-auto containers, custom thin gray scrollbar on long announcement/feedback lists, info callout for "attendance already marked", notification count badge on dashboard, empty states everywhere with icon-in-circle pattern, max date on attendance date picker (can't mark future), error red ring on out-of-range marks input.
+- Lint initially flagged `setLoading(true)` called synchronously inside useTeacherData's useEffect (react-hooks/set-state-in-effect rule). Fixed by removing the synchronous setLoading — `loading` defaults to true on first render so initial state is correct, and on branchId change we use stale-while-revalidate (keep showing old data while fetching) which is nicer UX than a flash of skeleton.
+- Verified `bun run lint` passes clean (0 errors, 0 warnings).
+- Verified dev server compiles cleanly (dev.log shows "✓ Compiled" with no errors).
+- Wrote /agent-ctx/3-teacher-portal-full-stack-developer.md with file map + API gap notes for the next agent.
+
+Stage Summary:
+- /src/components/portal/teacher-portal.tsx completely rewritten (~2200 lines, 7 modules + router). Lint clean, compiles clean.
+- Allocation enforcement is strict: the only source of classes is api.getTeacherClasses() (server-side query on teacher_class_courses). Teachers can never see/select classes outside their allocation. Subject dropdowns in Results + Feedback + Attendance come from the same allocated class objects.
+- Sticky submit bars + custom scrollbars + thoughtful empty/error/loading states meet the "Linear/Stripe/Vercel dashboard quality" bar.
+- API gaps discovered:
+  1. NO dedicated /api/feedback endpoint exists in handler.ts. The portal POSTs to /api/feedback best-effort (silently 404s) and keeps feedback in component state so the teacher still gets immediate confirmation. Backend wiring for persistent feedback storage is a future task.
+  2. api.getAttendance({ teacherId }) returns ALL the teacher's sessions across all classes/dates — the portal filters client-side for the matching class+date to pre-populate the roster. Acceptable for now (typically ≤50 sessions per teacher), but a server-side classId+date filter would be cleaner.
+  3. api.getResults({ teacherId }) is NOT actually filtered server-side (the handler ignores the teacherId param and returns all branch results). The portal uses the data as-is for the "Recent Submissions" preview. If a backend filter is added later, the client still works (just runs on an already-filtered list).
+  4. api.getTimetable({ teacherId }) now works correctly (the double-vs-single quote SQL day-literal bug noted in RESEARCH-WEB has already been fixed in handler.ts).
+
+---
+Task ID: 4-student-portal
+Agent: full-stack-developer
+Task: Rebuild Student portal UI — clean, aesthetic, view-only (also serves Parent role)
+
+Work Log:
+- Read /home/z/my-project/worklog.md (esp. the 3-teacher-portal entry) to match the design language: `h-0.5 w-8 bg-[#F26522] rounded-full mb-3` section accent, white cards on `border-gray-200 rounded-xl`, uppercase muted table headers, no gradients/glassmorphism/colored-icon-tiles/framer-motion, orange reserved for primary actions + active states + section accent + today's column + percentage bars.
+- Read existing /src/components/portal/student-portal.tsx (1483 lines) to map current module structure, API usage, and ward-aware label requirements.
+- Read /src/lib/role-modules.ts to confirm the EXACT 7 student modules + `settings` (flat): student-dashboard, student-results, student-report-card, student-attendance, student-timetable, student-datesheet, student-announcements. Parent role reuses these exact same IDs.
+- Read /src/lib/server/auth.ts (buildUserProfile) and confirmed the user object ships `class` (name) + `section` but NOT `classId`. Wrote `useStudentClassId(user)` hook to resolve `classId` via `api.getClasses(branchId)` + name/section match.
+- Read /src/lib/server/handler.ts to verify API behavior: attendance returns `{ entries, total, present, absent, late }` for studentId; results returns flat array `{ id, exam, courseId, totalMarks, marks, grade, date }` for studentId; report-cards filters server-side by studentId; announcements already does server-side class lookup for student role; timetable filters by classId; date sheets are parsed from announcements where title starts with "Date Sheet:".
+- Wrote /src/components/portal/student-portal.tsx (~1940 lines) with the exact structure required by the task spec:
+  1. Header comment describing spec §6.1 + §6.2 + design language
+  2. Imports (React, api, cn, store, shadcn/ui Table + Accordion, lucide-react)
+  3. Props type + shared constants (TIMETABLE_DAYS, SCROLLBAR_CLS)
+  4. Ward-aware `possessive(user, studentPhrase, parentPhrase)` helper used in every heading
+  5. Shared helpers (PageHeader with rounded-full accent, StatCard, SectionHeader, Skeleton, SkeletonTable, SkeletonCards, SkeletonStatGrid, EmptyState, ErrorRow)
+  6. Formatters (formatDate, formatDateTime, relativeTime, subjectLabel, computePercentage, computeGrade, gradeTone, barTone)
+  7. Small components (GradeBadge with subtle muted tones — emerald for A+/A, slate for B/C, amber for D, rose for F; PercentageBar with orange fill; StatusBadge; ScopeBadge for Class/Branch/College-wide)
+  8. useStudentClassId hook (resolves classId from user.class + user.section + user.branchId)
+  9. Seven module components with section banners:
+     - StudentDashboard — welcome banner (ward-aware title) + 4 StatCards + 2-col body (recent announcements + latest results with grade badge + percentage bar) + 6 quick-link cards
+     - StudentResults — 3-card stats strip (Highest/Avg/Lowest) + full table with subject/exam/date/marks/grade/percentage columns
+     - StudentReportCard — Accordion of published cards; each expands to show Obtained/Percentage/Grade stats row + remarks block + student info footer
+     - StudentAttendance — big rate + Present/Absent/Late tiles + distribution bar (green/amber/red proportional) + chronological log table with StatusBadge
+     - StudentTimetable — weekly grid Mon–Sat × periods; today's column header + cells highlighted orange; room name shown
+     - StudentDateSheets — parsed from "Date Sheet:" announcements; each card has scope badge + upcoming count + table of subject/date/time/status
+     - StudentAnnouncements — filtered (student role + class scope, excluding date sheets); cards with ScopeBadge + sender + relative time + message
+ 10. Main StudentPortal export with switch on activeModule; strips 'student:' namespace for admin hub access; returns null for 'settings' (handled by parent RolePortal).
+- Polished UX details: accordion report cards (defaultOpen on the most recent), today's-column tinting on timetable (header text + dot + cell border), distribution bar on attendance summary, scope badges on announcements/datesheets, quick-link grid on dashboard, 3-card stats strip on results page, ward-aware labels everywhere (My → Ward's, Your → Your child's).
+- Removed unused symbols (PRIMARY/PRIMARY_DARK constants, LayoutDashboard/BookOpen imports) after initial draft left `void` references that caused a transient runtime error in dev.log. Verified clean compile after removal.
+- Verified `bun run lint` passes clean (0 errors, 0 warnings).
+- Verified dev server compiles cleanly (dev.log shows `✓ Compiled in 151ms` / `162ms` / `147ms` and `GET / 200 in 267ms` after the rewrite).
+- Wrote /agent-ctx/4-student-portal-full-stack-developer.md with file map + API gap notes for the next agent.
+
+Stage Summary:
+- /src/components/portal/student-portal.tsx completely rewritten (~1940 lines, 7 modules + router). Lint clean, compiles clean.
+- View-only posture is strict: ZERO edit/create/delete buttons anywhere. Every action button is purely navigational (e.g. "View all" → setActiveModule). Matches spec §6.1 (Student) and §6.2 (Parent).
+- Ward-aware labels gracefully handle `user.role === 'parent'` via the `possessive()` helper — "My Results" → "Ward's Results", "Welcome back" → "Welcome to your ward's portal", etc. The user object IS the student's user object (parent logs in with student creds), so all studentId-keyed API queries work unchanged.
+- classId resolution: user profile doesn't ship classId, so `useStudentClassId()` resolves it from `api.getClasses(branchId)` + name/section match. If not found, timetable/datesheet views gracefully fall back to "Class not assigned" / empty states.
+- API gaps discovered:
+  1. user.classId is NOT in buildUserProfile() — resolved client-side via api.getClasses() lookup. Could be improved by extending buildUserProfile() to do the server-side lookup once.
+  2. Date sheets are parsed from announcements (title starts with "Date Sheet:") — no dedicated /api/datesheets endpoint exists. Works fine but depends on the academic-portal's announcement format.
+  3. api.getNotifications() is called on the dashboard for the unread-count chip on the Announcements stat card — could be removed if the dashboard shouldn't depend on the notification system.
