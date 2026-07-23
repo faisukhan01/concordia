@@ -1465,3 +1465,30 @@ Stage Summary:
 - Sign-in card is now exactly 3.5% white background opacity — campus photo clearly visible
 - GitHub repo (faisukhan01/concordia) updated: HEAD = cd14e30 on main
 - Vercel deployment (concordia-eight.vercel.app) live with new code, verified via computed styles
+
+---
+Task ID: login-card-3.5pct-verified
+Agent: main
+Task: User reported card still looked opaque despite 3.5% setting. Diagnose and fix definitively, push to GitHub + Vercel.
+
+Work Log:
+- Analyzed user screenshot with VLM — appeared 85-90% opaque
+- Discovered Tailwind v4 was NOT generating CSS for arbitrary bg-white/[0.035] class in production (class in HTML but no CSS rule)
+- Fix 1: Replaced bg-white/[0.035] Tailwind class with inline style backgroundColor: rgba(255,255,255,0.035) — guarantees rendering on all builds
+- Committed (bade91f) + pushed
+- Pixel analysis revealed card AREA was darker than outside, but card element itself was correct
+- Root cause: page gradient overlay (from-black/40 via-black/10) was darkening the entire left side where the card sits
+- Fix 2: Lightened gradient from-black/40 via-black/10 → from-black/25 via-black/5 (commit 0f67078)
+- Fix 3: Lightened further to from-black/15 via-transparent (commit 297957d) — campus photo now bright across card area
+- DEFINITIVE PROOF via card-hide test:
+  * Pixel at (94,270) WITH card visible: luminance 75.3
+  * Same pixel with card hidden (visibility:hidden): luminance 69.3
+  * Difference: +6.0 (card adds slight white tint = exactly 3.5% opacity working)
+- Computed style on live Vercel confirmed: backgroundColor: rgba(255, 255, 255, 0.035), backdropFilter: none
+
+Stage Summary:
+- Sign-in card is DEFINITIVELY at 3.5% white opacity (proven via card-hide pixel comparison)
+- Inline style used instead of Tailwind arbitrary class (Tailwind v4 was purging it in production)
+- Page gradient lightened to from-black/15 via-transparent so campus photo is bright behind card
+- GitHub repo (faisukhan01/concordia) updated: HEAD = 297957d on main
+- Vercel deployment (concordia-eight.vercel.app) live, verified via computed styles + pixel analysis
