@@ -1443,3 +1443,25 @@ Stage Summary:
 - GitHub repo (faisukhan01/concordia) updated: HEAD = 9a24cb3 on main
 - Vercel deployment (concordia-eight.vercel.app) live with new code, verified via computed styles
 - Login API still working (admin@concordia.edu.pk / concordia123)
+
+---
+Task ID: login-card-3.5pct-opacity
+Agent: main
+Task: Set sign-in card background opacity to exactly 3.5%, push to GitHub + Vercel
+
+Work Log:
+- Changed card class from bg-white/[0.015] → bg-white/[0.035] (3.5% white opacity)
+- Kept ring-1 ring-white/40 as the only stroke; no backdrop-blur (photo stays sharp)
+- Lint clean
+- Committed (cd14e30) + pushed to GitHub origin/main
+- Waited 50s for Vercel auto-deploy
+- Verified deployed JS bundle: bg-white/[0.035] = 1 occurrence (live), bg-white/[0.015] = 0 (old gone)
+- Agent Browser computed-style check on live card confirmed:
+  * backgroundColor: oklab(... / 0.035)  ← exactly 3.5% alpha
+  * backdropFilter: none  ← no blur
+  * opacity: 1
+
+Stage Summary:
+- Sign-in card is now exactly 3.5% white background opacity — campus photo clearly visible
+- GitHub repo (faisukhan01/concordia) updated: HEAD = cd14e30 on main
+- Vercel deployment (concordia-eight.vercel.app) live with new code, verified via computed styles
