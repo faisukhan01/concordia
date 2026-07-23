@@ -12,10 +12,9 @@ import { BrandLogo } from '@/components/brand-logo';
 import {
   GraduationCap, Search, Bell, Menu, LogOut,
   PanelLeftClose, PanelLeft, Shield,
-  CheckCircle2, AlertCircle, Receipt, Award, CalendarCheck, X, Moon, Sun,
+  CheckCircle2, AlertCircle, Receipt, Award, CalendarCheck, X,
   ChevronDown,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
 
 import { SuperAdminPortal } from './super-admin-portal';
 import { AdminPortal } from './admin-portal';
@@ -78,7 +77,7 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
         {collapsed ? (
           <BrandLogo size="xs" />
         ) : (
-          <BrandLogo size="sm" />
+          <BrandLogo size="sidebar" />
         )}
       </div>
 
@@ -87,10 +86,13 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
         <div className="space-y-5">
           {groups.map((group: any) => {
             const isOpen = groupOpen[group.group];
+            const isFlat = group.flat === true;
             return (
               <div key={group.group}>
-                {/* Section header — small caps, muted, subtle */}
-                {!collapsed && (
+                {/* Section header — only for collapsible (non-flat) groups.
+                    Flat groups (single-item like Admin Dashboard / Settings)
+                    render their item directly with no toggle header. */}
+                {!isFlat && !collapsed && (
                   <button
                     onClick={() => setGroupOpen((g: any) => ({ ...g, [group.group]: !g[group.group] }))}
                     className="w-full flex items-center justify-between px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-400 hover:text-gray-600 transition-colors"
@@ -99,7 +101,8 @@ function SidebarContent({ role, collapsed, groupOpen, setGroupOpen, activeModule
                     <ChevronDown className={cn('h-3 w-3 transition-transform', !isOpen && '-rotate-90')} />
                   </button>
                 )}
-                <div className={cn(!isOpen && !collapsed && 'hidden')}>
+                {/* Flat groups always show items. Collapsible groups hide items when closed. */}
+                <div className={cn(!isFlat && !isOpen && !collapsed && 'hidden')}>
                   <div className="space-y-0.5">
                     {group.items.map((m: any) => {
                       const isActive = activeModule === m.id;
@@ -168,7 +171,6 @@ export function RolePortal() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [blockedMsg, setBlockedMsg] = useState<string | null>(null);
-  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // --- Notifications dropdown state ---
@@ -226,11 +228,13 @@ export function RolePortal() {
 
   const role = user?.role || 'student';
   const groups = ROLE_MODULES[role] || [];
-  // All sidebar groups start expanded. The admin role now uses a clean
-  // hub approach (single entries per sub-portal, no dropdowns), so there
-  // are no sub-portal groups to collapse.
+  // All sidebar groups start COLLAPSED by default. The user explicitly
+  // requested that dropdowns are NOT open by default — they open only when
+  // clicked. The group containing the active module will still auto-expand
+  // (see the auto-expand effect below) so navigation from the command
+  // palette or deep links keeps the active item visible.
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(
-    Object.fromEntries(groups.map((g: any) => [g.group, true]))
+    Object.fromEntries(groups.map((g: any) => [g.group, false]))
   );
   const accent = roleAccent[role];
 
@@ -402,11 +406,11 @@ export function RolePortal() {
             </button>
             {mounted && (
               <button
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                aria-label="Toggle theme"
-                className="h-9 w-9 grid place-items-center rounded-md hover:bg-accent text-muted-foreground transition"
+                onClick={() => setCmdOpen(true)}
+                aria-label="Search"
+                className="md:hidden h-9 w-9 grid place-items-center rounded-md hover:bg-accent text-muted-foreground transition"
               >
-                {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+                <Search className="h-[18px] w-[18px]" />
               </button>
             )}
             <div className="relative" ref={notifRef}>

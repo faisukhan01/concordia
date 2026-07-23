@@ -29,8 +29,17 @@ export type RoleModule = {
   color: string;
 };
 
+export type RoleModuleGroup = {
+  group: string;
+  items: RoleModule[];
+  // `flat: true` → render items directly without a collapsible dropdown header.
+  // Used for single-item groups like "Admin Dashboard" or "Settings" that
+  // should always be visible (not hidden behind a toggle).
+  flat?: boolean;
+};
+
 export type RoleModules = {
-  [role: string]: { group: string; items: RoleModule[] }[];
+  [role: string]: RoleModuleGroup[];
 };
 
 // Concordia orange professional palette.
@@ -57,42 +66,53 @@ export const ROLE_MODULES: RoleModules = {
   // ═══════════════════════════════════════════════════════════════
   // Admin — top-level, oversees all other roles (spec §1.1)
   //
-  // CLEAN HUB APPROACH:
-  //   The sidebar has a single "Portals" section with 6 entries (one per
-  //   subordinate role). Clicking a portal entry opens a hub page that
-  //   shows all that role's modules as cards. This keeps the sidebar
-  //   minimal (~11 items) while giving the admin full access to every
-  //   sub-portal's functionality.
+  // SIDEBAR STRUCTURE (clean & neat, per user spec):
+  //   1. Admin Dashboard  (flat single page — monitors the whole institute)
+  //   2. Admission Office  (dropdown — sub-portal modules, NO dashboard)
+  //   3. Accountant        (dropdown — sub-portal modules, NO dashboard)
+  //   4. Academic Office   (dropdown — sub-portal modules, NO dashboard)
+  //   5. Settings          (flat single page)
   //
-  //   Portal entry IDs use the format `role:__hub__` (e.g.
-  //   `admissions:__hub__`). The AdminPortal component detects this and
-  //   renders a PortalHub component with cards for each module.
+  // The admin does NOT need each sub-portal's dashboard — they monitor
+  // everything from their own Admin Dashboard. Dropdowns open on click
+  // (not by default). Each sub-portal module ID is namespaced
+  // (`role:moduleId`) so the AdminPortal router delegates to the
+  // dedicated portal component.
+  //
+  // Teacher / Student / Parent portals are accessible via cards on the
+  // Admin Dashboard (quick-access row) — not as sidebar dropdowns — to
+  // keep the sidebar clean.
   // ═══════════════════════════════════════════════════════════════
   'admin': [
-    { group: 'Overview', items: [
-      { id: 'admin-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
-      { id: 'admin-analytics', name: 'Analytics', icon: TrendingUp, color: PRIMARY },
-      { id: 'announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+    { group: 'Main', flat: true, items: [
+      { id: 'admin-dashboard', name: 'Admin Dashboard', icon: LayoutDashboard, color: PRIMARY },
     ]},
-    { group: 'People', items: [
-      { id: 'admin-students', name: 'All Students', icon: GraduationCap, color: PRIMARY },
-      { id: 'admin-teachers', name: 'All Teachers', icon: Users, color: PRIMARY },
-      { id: 'admin-staff', name: 'Office Staff', icon: UserCog, color: SECONDARY },
+    { group: 'Admission Office', items: [
+      { id: 'admissions:admissions-new', name: 'New Enrollment', icon: UserPlus, color: PRIMARY },
+      { id: 'admissions:admissions-students', name: 'Student Records', icon: GraduationCap, color: PRIMARY },
+      { id: 'admissions:admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: SECONDARY },
     ]},
-    { group: 'Portals', items: [
-      { id: 'admissions:__hub__', name: 'Admission Office', icon: UserPlus, color: PRIMARY },
-      { id: 'accountant:__hub__', name: 'Accountant', icon: CreditCard, color: PRIMARY },
-      { id: 'academic:__hub__', name: 'Academic Office', icon: BookOpen, color: PRIMARY },
-      { id: 'teacher:__hub__', name: 'Teacher', icon: Users, color: SECONDARY },
-      { id: 'student:__hub__', name: 'Student', icon: GraduationCap, color: SECONDARY },
-      { id: 'parent:__hub__', name: 'Parent', icon: MessageCircle, color: SECONDARY },
+    { group: 'Accountant', items: [
+      { id: 'accountant:accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: PRIMARY },
+      { id: 'accountant:accountant-collect', name: 'Collect Payment', icon: CreditCard, color: PRIMARY },
+      { id: 'accountant:accountant-challans', name: 'Fee Challans', icon: Receipt, color: SECONDARY },
+      { id: 'accountant:accountant-installments', name: 'Installments', icon: ClipboardList, color: SECONDARY },
+      { id: 'accountant:accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
+      { id: 'accountant:accountant-logins', name: 'Student Logins', icon: KeyRound, color: SECONDARY },
     ]},
-    { group: 'Reports & Events', items: [
-      { id: 'admin-fees', name: 'Fee Management', icon: CreditCard, color: PRIMARY },
-      { id: 'admin-reports', name: 'Reports', icon: FileSpreadsheet, color: SECONDARY },
-      { id: 'events', name: 'Events', icon: Trophy, color: SECONDARY },
+    { group: 'Academic Office', items: [
+      { id: 'academic:academic-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+      { id: 'academic:academic-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
+      { id: 'academic:academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: SECONDARY },
+      { id: 'academic:academic-students', name: 'Students', icon: GraduationCap, color: SECONDARY },
+      { id: 'academic:academic-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
+      { id: 'academic:timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
+      { id: 'academic:academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
+      { id: 'academic:academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
+      { id: 'academic:results', name: 'Review Marks', icon: ClipboardList, color: SECONDARY },
+      { id: 'academic:report-cards', name: 'Result Cards', icon: Award, color: PRIMARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],
@@ -108,7 +128,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'admissions-students', name: 'Student Records', icon: GraduationCap, color: PRIMARY },
       { id: 'admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: SECONDARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],
@@ -127,7 +147,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
       { id: 'accountant-logins', name: 'Student Logins', icon: KeyRound, color: SECONDARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],
@@ -154,7 +174,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'results', name: 'Review Marks', icon: ClipboardList, color: SECONDARY },
       { id: 'report-cards', name: 'Result Cards', icon: Award, color: PRIMARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],
@@ -180,7 +200,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'teacher-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
       { id: 'teacher-timetable', name: 'My Timetable', icon: Calendar, color: SECONDARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],
@@ -200,7 +220,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'student-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'student-announcements', name: 'Announcements', icon: Bell, color: SECONDARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],

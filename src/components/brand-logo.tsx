@@ -15,15 +15,16 @@ import Image from 'next/image';
  *   <BrandLogo size="lg" />   // landing hero
  *   <BrandLogo variant="light" />  // for dark backgrounds (footer)
  */
-type LogoSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+type LogoSize = 'xs' | 'sm' | 'sidebar' | 'md' | 'lg' | 'xl';
 type LogoVariant = 'default' | 'light' | 'mono';
 
 const SIZES: Record<LogoSize, { h: number; w: number; className: string }> = {
-  xs: { h: 20, w: 67, className: 'h-5 w-[67px]' },     // tiny sidebar collapsed
-  sm: { h: 28, w: 94, className: 'h-7 w-[94px]' },     // navbar
-  md: { h: 36, w: 121, className: 'h-9 w-[121px]' },   // auth screens
-  lg: { h: 48, w: 161, className: 'h-12 w-[161px]' },  // landing hero
-  xl: { h: 64, w: 215, className: 'h-16 w-[215px]' },  // large hero
+  xs:      { h: 22, w: 74,  className: 'h-[22px] w-[74px]' },   // tiny sidebar collapsed
+  sm:      { h: 30, w: 101, className: 'h-[30px] w-[101px]' },  // navbar
+  sidebar: { h: 38, w: 128, className: 'h-[38px] w-[128px]' },  // portal sidebar (larger, readable)
+  md:      { h: 36, w: 121, className: 'h-9 w-[121px]' },       // auth screens
+  lg:      { h: 48, w: 161, className: 'h-12 w-[161px]' },      // landing hero
+  xl:      { h: 64, w: 215, className: 'h-16 w-[215px]' },      // large hero
 };
 
 export function BrandLogo({

@@ -104,16 +104,18 @@ export function LoginPage() {
 
       {/* ─── Main two-column layout ─── */}
       <div className="relative z-20 min-h-screen flex items-stretch justify-between">
-        {/* ═══════════ LEFT — clean white login card ═══════════ */}
-        <div className="flex-1 lg:flex-[0.58] flex items-center justify-center px-6 sm:px-10 py-12">
+        {/* ═══════════ LEFT — fully transparent glassmorphism login card ═══════════ */}
+        <div className="flex-1 lg:flex-[0.42] flex items-center justify-start px-6 sm:px-10 lg:pl-16 py-12">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             className="w-full max-w-[400px]"
           >
-            {/* Transparent glassmorphism card — lets the campus photo show through */}
-            <div className="rounded-2xl bg-white/10 backdrop-blur-xl shadow-2xl shadow-black/30 ring-1 ring-white/25 px-8 py-10">
+            {/* Crystal-transparent card — campus photo is fully visible through it.
+                Only a thin white stroke (border) + 3% white tint + subtle blur
+                keep the form legible. Logo sits on a white pill so it's visible. */}
+            <div className="rounded-2xl bg-white/[0.03] backdrop-blur-sm ring-1 ring-white/40 shadow-xl shadow-black/10 px-8 py-10">
               {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
                 <div className="rounded-xl bg-white px-5 py-3 shadow-lg shadow-black/10">
@@ -196,7 +198,7 @@ export function LoginPage() {
         </div>
 
         {/* ═══════════ RIGHT — demo accounts panel (ephemeral) ═══════════ */}
-        <div className="hidden lg:flex lg:flex-[0.42] items-center justify-center px-8 py-12">
+        <div className="hidden lg:flex lg:flex-[0.58] items-center justify-center px-8 py-12">
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
