@@ -1391,3 +1391,32 @@ Stage Summary:
 - Student/Teacher/Parent portals: rebuilt 100% per Concordia Admin Management System v1.0 spec — no legacy modules, exactly the modules described in the document
 - All portals verified working on Vercel production deployment
 - GitHub repo updated, Vercel auto-deployed successfully
+
+---
+Task ID: final-login-transparency
+Agent: main
+Task: Make sign-in card background 0% opacity so campus photo is clearly visible, then push to GitHub + Vercel
+
+Work Log:
+- Analyzed user screenshot with VLM — confirmed card looked ~40-50% opaque due to backdrop-blur-sm + bg-white/[0.03]
+- Edit 1: card bg-white/[0.03] backdrop-blur-sm → bg-transparent (removed frosted blur + tint), kept ring-1 ring-white/40 as stroke
+- Committed (7e46aee) + pushed to GitHub
+- Verified Vercel deploy: bg-white/[0.03] = 0 occurrences, bg-transparent = 3 occurrences in live JS bundles
+- VLM re-check still showed slight tint → identified left-side gradient overlay (from-black/70) as the cause
+- Edit 2: gradient from-black/70 via-black/25 → from-black/40 via-black/10 (lighter, campus more visible)
+- Edit 3: removed shadow-xl shadow-black/10 from card (was adding dark cast)
+- Committed (a10396b) + pushed to GitHub
+- Verified Vercel redeploy: from-black/70 = 0 occurrences, from-black/40 = 1 occurrence (live)
+- Agent Browser computed-style check on live card element confirmed:
+  * backgroundColor: rgba(0, 0, 0, 0)  ← fully transparent (0% opacity)
+  * backdropFilter: none  ← no blur
+  * boxShadow: only ring-1 ring-white/40 (1px white stroke at 40% alpha)
+  * opacity: 1
+
+Stage Summary:
+- Sign-in card is now truly 0% background opacity — campus photo fully visible through it
+- Only a thin white ring (stroke) defines the card edge
+- Page gradient lightened so campus is clearly visible across the whole left side
+- GitHub repo (faisukhan01/concordia) updated: HEAD = a10396b on main
+- Vercel deployment (concordia-eight.vercel.app) live with new code, verified via computed styles
+- Login API confirmed working: admin@concordia.edu.pk / concordia123 returns valid token
