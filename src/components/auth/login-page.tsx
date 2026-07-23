@@ -87,9 +87,10 @@ export function LoginPage() {
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: 'url(/concordia-campus.jpg)' }}
       />
-      {/* Very subtle gradient overlay — just enough for white-text contrast
-          on the left, campus photo remains clearly visible everywhere */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/10 to-transparent" />
+      {/* Minimal gradient overlay — only enough for white-text legibility on
+          the far left. Campus photo stays bright and clearly visible behind
+          the card so the 3.5% card tint is perceptible. */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/25 via-black/5 to-transparent" />
       {/* Bottom vignette so the copyright text is readable */}
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 to-transparent" />
 
