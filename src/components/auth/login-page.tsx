@@ -87,9 +87,9 @@ export function LoginPage() {
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: 'url(/concordia-campus.jpg)' }}
       />
-      {/* Subtle gradient overlay — darker on the left for card contrast,
-          lighter on the right so the campus is clearly visible */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/25 to-transparent" />
+      {/* Very subtle gradient overlay — just enough for white-text contrast
+          on the left, campus photo remains clearly visible everywhere */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/10 to-transparent" />
       {/* Bottom vignette so the copyright text is readable */}
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 to-transparent" />
 
@@ -115,7 +115,7 @@ export function LoginPage() {
             {/* Crystal-transparent card — background fully transparent (0% opacity),
                 campus photo is completely visible through it. Only a thin white
                 stroke (ring) defines the card edge. Logo sits on a white pill. */}
-            <div className="rounded-2xl bg-transparent ring-1 ring-white/40 shadow-xl shadow-black/10 px-8 py-10">
+            <div className="rounded-2xl bg-transparent ring-1 ring-white/40 px-8 py-10">
               {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
                 <div className="rounded-xl bg-white px-5 py-3 shadow-lg shadow-black/10">
