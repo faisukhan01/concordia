@@ -1763,3 +1763,31 @@ Stage Summary:
 - GitHub repo (faisukhan01/concordia) main branch fully synced at commit 4fa7588 ✅
 - Vercel deployment (concordia-eight.vercel.app) updated and verified live ✅
 - Lint: 0 errors, 0 warnings ✅
+
+---
+Task ID: 8-signin-card-opacity-final
+Agent: main
+Task: User reported sign-in card still "totally transparent" at 9% opacity. Increase opacity enough so the card looks good and aesthetic, then push to GitHub + update Vercel.
+
+Work Log:
+- Read user's screenshot with VLM (z-ai vision) to assess the actual rendered state. VLM confirmed at 9% the card was semi-transparent but the campus photo was clearly visible through it — too subtle for the user's taste.
+- First attempt: bumped to 30% opacity + added backdrop-blur-xl + backdrop-saturate-150 for frosted glass. VLM verification: card looked ~85-92% opaque — TOO opaque, campus barely visible.
+- Second attempt (final): dialed back to 20% opacity + backdrop-blur-xl + backdrop-saturate-150. VLM verification on localhost: (1) card clearly visible ✅ (2) campus photo visible ✅ (3) aesthetic & professional ✅ (4) "JUST RIGHT".
+- Final card styling in src/components/auth/login-page.tsx line 121-123:
+  * className="rounded-2xl ring-1 ring-white/60 px-8 py-10 shadow-2xl shadow-black/30 backdrop-blur-xl backdrop-saturate-150"
+  * style={{ backgroundColor: 'rgba(255, 255, 255, 0.20)' }}
+- Lint: 0 errors, 0 warnings.
+- Committed as 6e72b07: "fix: sign-in card opacity 9% -> 20% + backdrop-blur for proper frosted glass".
+- Pushed to origin/main (6fd2d2d..6e72b07).
+- Agent Browser QA on Vercel live (https://concordia-eight.vercel.app):
+  * Opened live URL → click "Sign in" → card confirmed rendering with inline style `background-color: rgba(255, 255, 255, 0.2)` and `backdrop-filter: blur(24px) saturate(1.5)`.
+  * VLM verification on Vercel screenshot: (1) card clearly visible as frosted glass panel ✅ (2) campus building photo still visible through translucent card ✅ (3) aesthetic, modern, clean design ✅.
+
+Stage Summary:
+- Sign-in card now renders at 20% white opacity + backdrop-blur(24px) + saturate(1.5) = proper frosted glass ✅
+- Card is clearly defined as a distinct panel (no longer "totally transparent") ✅
+- Campus photo remains softly visible through the blur ✅
+- VLM-verified on BOTH localhost and Vercel live as "JUST RIGHT" ✅
+- GitHub repo updated (commit 6e72b07) ✅
+- Vercel deployment (concordia-eight.vercel.app) auto-deployed and verified live ✅
+- If user still sees old transparent card: hard refresh (Ctrl+Shift+R) to clear cached CSS bundle.
