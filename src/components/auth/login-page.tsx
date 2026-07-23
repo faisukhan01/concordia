@@ -113,13 +113,14 @@ export function LoginPage() {
             transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             className="w-full max-w-[400px]"
           >
-            {/* Aesthetic translucent card — background at 9% white opacity via
-                inline style (rgba 0.09) for guaranteed cross-build rendering.
-                Campus photo remains visible through it while the card has a
-                soft, eye-catching frosted tint. White ring defines the edge. */}
+            {/* Aesthetic frosted-glass card — 20% white opacity + backdrop blur.
+                This is the sweet spot: the card is clearly defined as a distinct
+                frosted panel (not transparent), while the campus photo remains
+                softly visible through the blur. Inline style guarantees the exact
+                opacity renders consistently across builds. */}
             <div
-              className="rounded-2xl ring-1 ring-white/50 px-8 py-10 shadow-2xl shadow-black/20"
-              style={{ backgroundColor: 'rgba(255, 255, 255, 0.09)' }}
+              className="rounded-2xl ring-1 ring-white/60 px-8 py-10 shadow-2xl shadow-black/30 backdrop-blur-xl backdrop-saturate-150"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.20)' }}
             >
               {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
