@@ -1738,3 +1738,28 @@ Stage Summary:
 - Lint: 0 errors, 0 warnings ✅
 - Dev server: compiles clean, no runtime errors ✅
 - API gaps noted for future backend work: (1) super-admin can only see their OWN announcements via GET /api/announcements (filter is `senderRole = 'super-admin'`) — to show ALL college announcements the handler line 825-827 would need to drop the senderRole filter for super-admin; (2) GET /api/fee-invoices returns invoices for the current user only (`sid = studentId || user.id`) — super-admin can't see individual fee invoices, only the aggregated `totalRevenue` from platformOverview. Both gaps are worked around in the UI and documented in the handover doc.
+
+---
+Task ID: 7-deploy-verify
+Agent: main
+Task: Push all pending changes (sign-in card opacity 9% + super admin redesign) to GitHub and verify Vercel deployment is live with the new opacity.
+
+Work Log:
+- Verified sign-in card opacity change was in code (rgba 0.09 = 9%) but NEVER committed/pushed in previous session.
+- Ran `bun run lint` — 0 errors, 0 warnings.
+- Staged all modified files: login-page.tsx, super-admin-portal.tsx, role-modules.ts, handler.ts, api.ts, worklog.md + new agent-ctx handover doc.
+- Committed as 4fa7588: "feat: redesign Super Admin portal for Concordia College + bump sign-in card opacity to 9%".
+- Pushed to origin/main (faisukhan01/concordia) — 7de5ead..4fa7588.
+- Agent Browser QA on localhost:3000:
+  * Fresh session → landing page → click "Sign in" → sign-in card confirmed rendering with inline style `background-color: rgba(255, 255, 255, 0.09)` and computed style `rgba(255, 255, 255, 0.09)`.
+  * Logged-in session → super admin portal Office Staff module confirmed rendering with new sidebar (Dashboard / College / Oversight / Account) and admin@concordia editable row.
+- Agent Browser QA on Vercel live (https://concordia-eight.vercel.app):
+  * Opened live URL → landing page → click "Sign in" → sign-in card confirmed rendering with inline style `background-color: rgba(255, 255, 255, 0.09)` and computed style `rgba(255, 255, 255, 0.09)`.
+  * Vercel auto-deploy succeeded — new build is live.
+
+Stage Summary:
+- Sign-in card opacity = 9% (rgba 0.09) — confirmed live on BOTH localhost and Vercel production ✅
+- Super Admin portal redesign — live on localhost (Vercel auto-deployed same commit) ✅
+- GitHub repo (faisukhan01/concordia) main branch fully synced at commit 4fa7588 ✅
+- Vercel deployment (concordia-eight.vercel.app) updated and verified live ✅
+- Lint: 0 errors, 0 warnings ✅
