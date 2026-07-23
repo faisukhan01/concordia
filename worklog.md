@@ -1492,3 +1492,26 @@ Stage Summary:
 - Page gradient lightened to from-black/15 via-transparent so campus photo is bright behind card
 - GitHub repo (faisukhan01/concordia) updated: HEAD = 297957d on main
 - Vercel deployment (concordia-eight.vercel.app) live, verified via computed styles + pixel analysis
+
+---
+Task ID: login-card-3.5pct-cache-issue
+Agent: main
+Task: User reported card still looks opaque in their screenshot. Diagnosed as browser cache issue.
+
+Work Log:
+- Analyzed user's new screenshot with VLM + pixel analysis
+- Found card pixels at RGB(229,240,254) lum=241 = 94.5% white opacity (OLD cached version)
+- Compared with current localhost:3000 render: card pixels at lum=56 (dark, campus visible = 3.5%)
+- Verified source code: style={{ backgroundColor: 'rgba(255, 255, 255, 0.035)' }} confirmed
+- Verified localhost:3000 computed style: rgba(255, 255, 255, 0.035) ✅
+- Verified Vercel live computed style: rgba(255, 255, 255, 0.035) ✅
+- Root cause: user's browser is caching old JS/CSS bundles from pre-390b13c deploy
+- Pushed unpushed commit (8877f6e) to GitHub — now in sync
+- Both GitHub and Vercel confirmed live with 3.5% opacity code
+
+Stage Summary:
+- Code is DEFINITIVELY correct at 3.5% opacity (proven via computed styles + pixel analysis)
+- User's screenshot shows OLD cached version (94.5% white) — browser cache issue
+- GitHub (faisukhan01/concordia) HEAD = 8877f6e, in sync with local
+- Vercel (concordia-eight.vercel.app) live, verified rgba(255,255,255,0.035)
+- User needs to hard-refresh browser (Ctrl+Shift+R) to see the updated card
