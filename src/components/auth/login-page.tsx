@@ -112,10 +112,10 @@ export function LoginPage() {
             transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
             className="w-full max-w-[400px]"
           >
-            {/* Crystal-transparent card — campus photo is fully visible through it.
-                Only a thin white stroke (border) + 3% white tint + subtle blur
-                keep the form legible. Logo sits on a white pill so it's visible. */}
-            <div className="rounded-2xl bg-white/[0.03] backdrop-blur-sm ring-1 ring-white/40 shadow-xl shadow-black/10 px-8 py-10">
+            {/* Crystal-transparent card — background fully transparent (0% opacity),
+                campus photo is completely visible through it. Only a thin white
+                stroke (ring) defines the card edge. Logo sits on a white pill. */}
+            <div className="rounded-2xl bg-transparent ring-1 ring-white/40 shadow-xl shadow-black/10 px-8 py-10">
               {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
                 <div className="rounded-xl bg-white px-5 py-3 shadow-lg shadow-black/10">
