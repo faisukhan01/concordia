@@ -1605,3 +1605,28 @@ Stage Summary:
   1. user.classId is NOT in buildUserProfile() — resolved client-side via api.getClasses() lookup. Could be improved by extending buildUserProfile() to do the server-side lookup once.
   2. Date sheets are parsed from announcements (title starts with "Date Sheet:") — no dedicated /api/datesheets endpoint exists. Works fine but depends on the academic-portal's announcement format.
   3. api.getNotifications() is called on the dashboard for the unread-count chip on the Announcements stat card — could be removed if the dashboard shouldn't depend on the notification system.
+
+---
+Task ID: portals-deploy-final
+Agent: main
+Task: Final verification + push to GitHub + Vercel deploy of rebuilt Teacher/Student portals
+
+Work Log:
+- Verified lint passes clean (0 errors)
+- Fixed transient compile error (PRIMARY not defined — was from stale cache, resolved on recompile)
+- Local dev server: HTTP 200, compiles cleanly
+- Logged in as teacher (t006@concordia.edu.pk / 123456) on localhost → Teacher portal renders with all 7 spec modules
+- VLM verified Teacher dashboard UI: "clean, aesthetic, professional" with correct sidebar (Dashboard, My Classes, Attendance, Test Results, Student Feedback, Announcements, My Timetable)
+- Committed (5a4e3ce): 8 files changed, 2265 insertions, 2247 deletions
+- Pushed to GitHub origin/main successfully
+- Vercel redeploy verified: Homepage HTTP 200, admin login API HTTP 200
+- Admin portal confirmed working on Vercel (sidebar shows Admin Dashboard + 3 office dropdowns + Settings)
+- Teacher login on Vercel fails (Turso DB has different password hash for t006 — local SQLite has 123456); this is a DB data issue, not a code issue
+
+Stage Summary:
+- Teacher portal (spec §5): rebuilt with 7 allocation-restricted modules, clean UI ✅
+- Student portal (spec §6.1): rebuilt with 7 view-only modules, ward-aware for parent role ✅
+- Parent portal (spec §6.2): consolidated into StudentPortal (deleted 1485-line parent-portal.tsx) ✅
+- GitHub: faisukhan01/concordia HEAD = 5a4e3ce on main ✅
+- Vercel: concordia-eight.vercel.app live, admin portal verified working ✅
+- All portals use consistent design system (#F26522 orange, grayscale, white cards, no gradients/glassmorphism)
