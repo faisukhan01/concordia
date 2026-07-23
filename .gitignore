@@ -65,11 +65,16 @@ db/*.db-journal
 /tool-results/
 /upload/
 /preview-*.png
-/.zscripts/dev.pid
+
+# Internal agent handover docs (not part of the product source)
+/agent-ctx/
+/worklog.md
+
+# Sandbox dev infra (local only)
+/.zscripts/
 
 # Research / scraped reference data (never deploy this — may contain third-party keys)
 /research/
-/download/*.png
 
 # Skills directory
 /skills/
