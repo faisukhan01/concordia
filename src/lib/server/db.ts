@@ -101,11 +101,14 @@ export async function initDB() {
   // before a new seed was added in a deployment — the seed would never run.
 
   // Seed super admin if not exists
+  // Password is read from SEED_PASSWORD_SUPER_ADMIN env var (production should
+  // set a strong password); falls back to a dev-only default if unset.
   const existing = await db.execute({ sql: 'SELECT id FROM users WHERE role = ?', args: ['super-admin'] });
   if (existing.rows.length === 0) {
+    const superPwd = process.env.SEED_PASSWORD_SUPER_ADMIN || 'QaReLc_61y8';
     await db.execute({
       sql: `INSERT INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-SUPER', 'Faisal Khan', 'faisu577277@gmail.com', 'QaReLc_61y8', 'super-admin', 'Active', 'Chief Executive Officer', 0, 0],
+      args: ['U-SUPER', 'Faisal Khan', 'faisu577277@gmail.com', superPwd, 'super-admin', 'Active', 'Chief Executive Officer', 0, 0],
     });
   }
 
@@ -117,7 +120,9 @@ export async function initDB() {
   // Admission / Accountant / Academic offices.
   //
   // Only the 4 advertised office logins are seeded (admin / admissions /
-  // accountant / academics @concordia.edu.pk, password: concordia123).
+  // accountant / academics @concordia.edu.pk). Passwords are read from
+  // SEED_PASSWORD_* env vars — production MUST set these. A development
+  // fallback is used only when the env vars are unset (local dev).
   // Teacher & Student logins are created by the Academic Office at runtime.
   const concordiaAdminExists = await db.execute({ sql: 'SELECT id FROM users WHERE id = ?', args: ['U-CONCORDIA-ADMIN'] });
   if (concordiaAdminExists.rows.length === 0) {
@@ -133,22 +138,31 @@ export async function initDB() {
       args: ['B-DEMO', 'I-DEMO', 'Main Campus', 'Lahore', 'Concordia Admin', 'admin@concordia.edu.pk', 0, 0, 'Active', 0],
     });
 
-    // 3. The 4 Concordia office logins (password: concordia123)
+    // 3. The 4 Concordia office logins — passwords from env vars (production
+    //    should set strong passwords; dev falls back to 'concordia123').
+    const adminPwd = process.env.SEED_PASSWORD_ADMIN || 'concordia123';
+    const admissionsPwd = process.env.SEED_PASSWORD_ADMISSIONS || 'concordia123';
+    const accountantPwd = process.env.SEED_PASSWORD_ACCOUNTANT || 'concordia123';
+    const academicPwd = process.env.SEED_PASSWORD_ACADEMIC || 'concordia123';
+    // Warn loudly if production-like environment is using fallback passwords.
+    if (process.env.NODE_ENV === 'production' && !process.env.SEED_PASSWORD_ADMIN) {
+      console.warn('[security] SEED_PASSWORD_* env vars not set — using dev fallback passwords in production. Set them in Vercel project settings immediately.');
+    }
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-CONCORDIA-ADMIN', 'Concordia Admin', 'admin@concordia.edu.pk', 'concordia123', 'admin', 'Active', 'College Administrator', 0, 0, 'I-DEMO', 'B-DEMO'],
+      args: ['U-CONCORDIA-ADMIN', 'Concordia Admin', 'admin@concordia.edu.pk', adminPwd, 'admin', 'Active', 'College Administrator', 0, 0, 'I-DEMO', 'B-DEMO'],
     });
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-CONCORDIA-ADMISSIONS', 'Admission Office', 'admissions@concordia.edu.pk', 'concordia123', 'admissions', 'Active', 'Admission Officer', 0, 0, 'I-DEMO', 'B-DEMO'],
+      args: ['U-CONCORDIA-ADMISSIONS', 'Admission Office', 'admissions@concordia.edu.pk', admissionsPwd, 'admissions', 'Active', 'Admission Officer', 0, 0, 'I-DEMO', 'B-DEMO'],
     });
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-CONCORDIA-ACCOUNTANT', 'Accountant', 'accountant@concordia.edu.pk', 'concordia123', 'accountant', 'Active', 'Chief Accountant', 0, 0, 'I-DEMO', 'B-DEMO'],
+      args: ['U-CONCORDIA-ACCOUNTANT', 'Accountant', 'accountant@concordia.edu.pk', accountantPwd, 'accountant', 'Active', 'Chief Accountant', 0, 0, 'I-DEMO', 'B-DEMO'],
     });
     await db.execute({
       sql: `INSERT OR IGNORE INTO users (id, name, email, password, role, status, title, mustChangePassword, blocked, instituteId, branchId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: ['U-CONCORDIA-ACADEMIC', 'Academic Office', 'academics@concordia.edu.pk', 'concordia123', 'academic', 'Active', 'Academic Coordinator', 0, 0, 'I-DEMO', 'B-DEMO'],
+      args: ['U-CONCORDIA-ACADEMIC', 'Academic Office', 'academics@concordia.edu.pk', academicPwd, 'academic', 'Active', 'Academic Coordinator', 0, 0, 'I-DEMO', 'B-DEMO'],
     });
   }
 
