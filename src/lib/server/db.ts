@@ -152,28 +152,39 @@ export async function initDB() {
     });
   }
 
-  // ===================== DEMO DATA CLEANUP (unconditional) =====================
-  // Permanently delete ALL previously-seeded demo / fake data so existing
-  // deployments are cleaned up automatically. Only the super admin + 4
-  // Concordia office logins remain. This removes:
-  //   - legacy institute-admin / branch-manager users
-  //   - demo teacher / student / parent users
-  //   - demo classes, courses, timetable, announcements, fee invoices,
-  //     attendance, results, library books, transport routes, events
-  try {
-    await db.execute({ sql: `DELETE FROM users WHERE role IN ('institute-admin', 'branch-manager')` });
-    await db.execute({ sql: `DELETE FROM users WHERE id IN ('U-DEMO-TEACHER', 'U-DEMO-STUDENT', 'U-DEMO-PARENT', 'U-DEMO-ADMIN', 'U-DEMO-BRANCH')` });
-    await db.execute({ sql: `DELETE FROM timetable WHERE id LIKE 'TT-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM announcements WHERE id LIKE 'A-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM fee_invoices WHERE id LIKE 'FI-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM attendance WHERE id LIKE 'ATT-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM results WHERE id LIKE 'R-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM library_books WHERE id LIKE 'LB-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM transport_routes WHERE id LIKE 'TR-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM events WHERE id LIKE 'E-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM classes WHERE id LIKE 'C-DEMO-%'` });
-    await db.execute({ sql: `DELETE FROM courses WHERE id LIKE 'CR-DEMO-%'` });
-  } catch {}
+  // ===================== DEMO / FAKE DATA CLEANUP (unconditional) =====================
+  // Permanently delete ALL previously-seeded demo / fake / test data so existing
+  // deployments are cleaned up automatically on every request. Only the super
+  // admin + 4 Concordia office logins remain. Each DELETE is wrapped in its own
+  // try/catch so a failure on one table never blocks the others.
+  //
+  // CRITICAL: ALL announcements are wiped on every call. This guarantees that
+  // no dummy / fake / test announcements survive across deployments. Real
+  // announcements are created by users through the portals going forward.
+  const wipe = async (sql: string) => { try { await db.execute({ sql }); } catch {} };
+
+  // --- Announcements: wipe ALL (clean slate every call) ---
+  await wipe(`DELETE FROM announcements`);
+
+  // --- Legacy demo / test users ---
+  await wipe(`DELETE FROM users WHERE role IN ('institute-admin', 'branch-manager')`);
+  await wipe(`DELETE FROM users WHERE id IN ('U-DEMO-TEACHER', 'U-DEMO-STUDENT', 'U-DEMO-PARENT', 'U-DEMO-ADMIN', 'U-DEMO-BRANCH', 'U-7ec51783')`);
+
+  // --- Test / demo content by ID pattern ---
+  await wipe(`DELETE FROM timetable WHERE id LIKE 'TT-DEMO-%'`);
+  await wipe(`DELETE FROM fee_invoices WHERE id LIKE 'FI-DEMO-%'`);
+  await wipe(`DELETE FROM attendance WHERE id LIKE 'ATT-DEMO-%'`);
+  await wipe(`DELETE FROM results WHERE id LIKE 'R-DEMO-%'`);
+  await wipe(`DELETE FROM library_books WHERE id LIKE 'LB-DEMO-%'`);
+  await wipe(`DELETE FROM transport_routes WHERE id LIKE 'TR-DEMO-%'`);
+  await wipe(`DELETE FROM events WHERE id LIKE 'E-DEMO-%'`);
+  await wipe(`DELETE FROM classes WHERE id LIKE 'C-DEMO-%'`);
+  await wipe(`DELETE FROM courses WHERE id LIKE 'CR-DEMO-%'`);
+
+  // --- Orphan allocations from deleted test teachers ---
+  await wipe(`DELETE FROM teacher_class_courses WHERE teacherId IN ('U-DEMO-TEACHER', 'U-7ec51783')`);
+  await wipe(`DELETE FROM course_materials WHERE teacherId IN ('U-DEMO-TEACHER', 'U-7ec51783')`);
+  await wipe(`DELETE FROM diary WHERE teacherId IN ('U-DEMO-TEACHER', 'U-7ec51783')`);
   // Re-brand the institute + branch to Concordia on existing deployments
   // (updates only — no fake counts inserted).
   try {

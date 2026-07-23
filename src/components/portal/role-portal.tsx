@@ -527,23 +527,23 @@ export function RolePortal() {
         <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">
           {/* Onboarding tips banner — dismissible, remembered via localStorage */}
           <OnboardingTips />
-          {/* Must change password banner */}
+          {/* Must change password banner — shown on ALL portals when user has default/admin-assigned password */}
           {user?.mustChangePassword && activeModule !== 'settings' && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 rounded-xl bg-accent border border-[oklch(0.6_0.04_260)] p-4 flex items-center justify-between gap-3"
+              className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-center justify-between gap-3 shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-[oklch(0.5_0.04_260)_/_0.2] grid place-items-center shrink-0">
-                  <Shield className="h-5 w-5 text-primary" />
+                <div className="h-10 w-10 rounded-xl bg-amber-200/80 grid place-items-center shrink-0">
+                  <Shield className="h-5 w-5 text-amber-700" />
                 </div>
                 <div>
-                  <div className="font-semibold text-sm text-primary">Please change your password</div>
-                  <div className="text-xs text-primary">You're using a password assigned by your administrator. Change it now to secure your account.</div>
+                  <div className="font-semibold text-sm text-amber-900">Please change your password</div>
+                  <div className="text-xs text-amber-800">You're using a password assigned by your administrator. Change it now to secure your account.</div>
                 </div>
               </div>
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shrink-0" onClick={() => setActiveModule('settings')}>
+              <Button size="sm" className="bg-[#F26522] hover:bg-[#D4541E] text-white shrink-0 shadow-sm" onClick={() => setActiveModule('settings')}>
                 Change now
               </Button>
             </motion.div>

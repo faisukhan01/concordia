@@ -1950,7 +1950,7 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       else if (classId) { sql += ' AND classId = ?'; args.push(classId); }
       else if (branchId) { sql += ' AND branchId = ?'; args.push(branchId); }
       else if (user.branchId) { sql += ' AND branchId = ?'; args.push(user.branchId); }
-      sql += ' ORDER BY CASE day WHEN "Monday" THEN 1 WHEN "Tuesday" THEN 2 WHEN "Wednesday" THEN 3 WHEN "Thursday" THEN 4 WHEN "Friday" THEN 5 WHEN "Saturday" THEN 6 WHEN "Sunday" THEN 7 END, period';
+      sql += " ORDER BY CASE day WHEN 'Monday' THEN 1 WHEN 'Tuesday' THEN 2 WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4 WHEN 'Friday' THEN 5 WHEN 'Saturday' THEN 6 WHEN 'Sunday' THEN 7 END, period";
       const r = await db.execute({ sql, args });
       return NextResponse.json(r.rows);
     }
