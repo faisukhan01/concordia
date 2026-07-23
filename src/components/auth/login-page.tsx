@@ -113,9 +113,13 @@ export function LoginPage() {
             className="w-full max-w-[400px]"
           >
             {/* Crystal-transparent card — background at exactly 3.5% white opacity
-                (bg-white/[0.035]). Campus photo remains clearly visible through it.
-                Only a thin white stroke (ring) defines the card edge. Logo on white pill. */}
-            <div className="rounded-2xl bg-white/[0.035] ring-1 ring-white/40 px-8 py-10">
+                via inline style (rgba 0.035) for guaranteed cross-build rendering.
+                Campus photo remains clearly visible through it. Only a thin white
+                stroke (ring) defines the card edge. Logo on white pill. */}
+            <div
+              className="rounded-2xl ring-1 ring-white/40 px-8 py-10"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.035)' }}
+            >
               {/* Logo — white bg pill so it's always visible regardless of background */}
               <div className="mb-8 flex justify-center">
                 <div className="rounded-xl bg-white px-5 py-3 shadow-lg shadow-black/10">
