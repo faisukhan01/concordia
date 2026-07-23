@@ -1,1603 +1,2419 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+// ============================================================================
+// Concordia College — Super Admin Portal (Product Owner)
+//
+// ROLE
+//   The super admin (Faisal Khan — faisu577277@gmail.com) is the PRODUCT
+//   OWNER of the Concordia College platform. They monitor the WHOLE
+//   college (single-institution model — Concordia is THE institute,
+//   id: I-DEMO, branch: B-DEMO Main Campus) and manage every account.
+//
+// SIDEBAR (matches the admin / teacher / student portals — clean & flat):
+//   MAIN
+//     • Dashboard          — college-wide overview (stats + recent activity)
+//   COLLEGE
+//     • Branches & Classes — view all branches/classes/courses
+//     • Office Staff       — manage admin/admissions/accountant/academic
+//     • Teachers           — view all teachers, block/unblock, reset pwd
+//     • Students           — view all students, block/unblock, reset pwd
+//   OVERSIGHT
+//     • Announcements      — broadcast college-wide + view history
+//     • Fee Collection     — fee stats + recent invoices
+//     • Attendance         — all attendance records (latest 50)
+//     • Results            — all test results (latest 50)
+//   ACCOUNT
+//     • Settings           — change own password (handled by role-portal.tsx)
+//
+// DESIGN LANGUAGE (matches teacher / student / admin / academic portals):
+//   • Orange #F26522 used ONLY for: primary buttons, active row states,
+//     the h-0.5 w-8 section accent line, small active badges, focus rings.
+//   • NO gradients. NO glassmorphism. NO colored icon tiles. NO framer-motion.
+//   • White cards on border-gray-200 rounded-xl with hover:shadow-sm.
+//   • Tables: uppercase muted headers + hover:bg-gray-50 row tint.
+//   • All data is fetched live from the API. NO dummy / fake data.
+// ============================================================================
+
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { useApp } from '@/lib/store';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Building2, Users, Network, Plus, Crown, MapPin, CheckCircle2,
-  Server, Building, Lock, Unlock, Edit, Megaphone, Send, MessageSquare,
-  ChevronDown, ChevronRight, UserCog, Mail, Settings, ShieldCheck, Palette, Loader2,
-  Trash2, X,
-  DollarSign, AlertCircle, Wallet, Scale, FileText, TrendingUp,
-} from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
-import { useApp } from '@/lib/store';
+import {
+  Building2, UserCog, Users, GraduationCap, Megaphone,
+  DollarSign, CheckCircle2, Award, Search,
+  Loader2, Lock, Unlock, Edit, KeyRound, Trash2, ChevronRight, AlertCircle,
+  Inbox, BookOpen, Send, TrendingUp, Crown,
+} from 'lucide-react';
 
-// ---- Format helpers ----
-const formatPKR = (n: any) => 'PKR ' + Number(n || 0).toLocaleString('en-PK');
-const formatCompact = (n: number) => {
-  const v = Number(n || 0);
-  if (Math.abs(v) >= 1_000_000) return 'PKR ' + (v / 1_000_000).toFixed(1) + 'M';
-  if (Math.abs(v) >= 1_000) return 'PKR ' + (v / 1_000).toFixed(0) + 'k';
-  return 'PKR ' + v;
+type Props = { activeModule: string; user: any };
+
+// ───────────────────────── Shared constants ─────────────────────────
+
+const STAFF_ROLES = ['admin', 'admissions', 'accountant', 'academic'] as const;
+
+const ROLE_LABELS: Record<string, string> = {
+  'admin': 'Administrator',
+  'admissions': 'Admission Office',
+  'accountant': 'Accountant',
+  'academic': 'Academic Office',
+  'teacher': 'Teacher',
+  'student': 'Student',
+  'parent': 'Parent / Guardian',
 };
 
-// ---- CSV export helper ----
-function exportToCSV(filename: string, headers: string[], rows: (string | number)[][]) {
-  const escape = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  const csv = [headers.map(escape).join(','), ...rows.map(r => r.map(escape).join(','))].join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+const SCROLLBAR_CLS =
+  '[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent';
+
+const inputCls =
+  'h-10 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#F26522] focus:ring-2 focus:ring-[#F26522]/12';
+
+const btnPrimary =
+  'bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
+const btnSecondary =
+  'border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60';
+
+const fmtMoney = (n: number) => `Rs ${(Number(n) || 0).toLocaleString('en-PK')}`;
+
+const fmtDate = (iso?: string) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
+};
+
+const fmtDateTime = (iso?: string) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+};
+
+const relativeTime = (iso?: string) => {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return fmtDate(iso);
+};
+
+// ───────────────────────── Shared UI helpers ─────────────────────────
+
+function PageHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="min-w-0">
+        <div className="h-0.5 w-8 bg-[#F26522] mb-3" />
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{title}</h1>
+        {subtitle && <p className="text-sm text-gray-500 mt-1">{subtitle}</p>}
+      </div>
+      {action && <div className="shrink-0 flex gap-2 flex-wrap">{action}</div>}
+    </div>
+  );
 }
 
-// ---- Month names constant ----
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  onClick,
+}: {
+  icon: any;
+  label: string;
+  value: string | number;
+  sub?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={cn(
+        'w-full text-left rounded-xl border border-gray-200 bg-white p-5 transition-all',
+        onClick ? 'hover:border-[#F26522] hover:shadow-sm cursor-pointer' : 'cursor-default',
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            {label}
+          </div>
+          <div className="text-2xl font-bold text-gray-900 mt-1.5 truncate">{value}</div>
+          {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+        </div>
+        <Icon className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+      </div>
+    </button>
+  );
+}
 
-// ---------- Main router ----------
-export function SuperAdminPortal({ activeModule, user }: { activeModule: string; user: any }) {
-  // Top-level data shared across the dashboard and institutes pages
-  const [overview, setOverview] = useState<any>(null);
-  const [institutes, setInstitutes] = useState<any[]>([]);
-  const [finance, setFinance] = useState<any>(null);
-  const [overviewLoading, setOverviewLoading] = useState(true);
-  const [institutesLoading, setInstitutesLoading] = useState(true);
-  const [financeLoading, setFinanceLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
+function SectionHeader({
+  title,
+  desc,
+  action,
+}: {
+  title: string;
+  desc?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        {desc && <p className="text-xs text-gray-500 mt-0.5">{desc}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
 
-  // Loading state defaults to `true` (initial load). On later refreshes we keep the
-  // previously-fetched data visible until the new data arrives, which is better UX than
-  // flashing a spinner on every refresh. We therefore only ever flip loading → false here.
-  const refreshOverview = () => {
-    api.platformOverview()
-      .then(setOverview)
-      .catch(() => {})
-      .finally(() => setOverviewLoading(false));
-  };
-  const refreshInstitutes = () => {
-    api.institutes()
-      .then(setInstitutes)
-      .catch(() => {})
-      .finally(() => setInstitutesLoading(false));
-  };
-  const refreshFinance = () => {
-    api.getPlatformFinance()
-      .then(setFinance)
-      .catch(() => {})
-      .finally(() => setFinanceLoading(false));
-  };
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-md bg-gray-100', className)} />;
+}
 
-  useEffect(() => {
-    refreshOverview();
-    refreshInstitutes();
-    refreshFinance();
-  }, []);
+function SkeletonTable({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className="h-11 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
 
-  const refreshAll = () => { refreshOverview(); refreshInstitutes(); refreshFinance(); };
+function EmptyState({
+  icon: Icon,
+  title,
+  desc,
+  action,
+}: {
+  icon: any;
+  title: string;
+  desc?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <Icon className="h-6 w-6 text-gray-300 mb-3" />
+      <p className="text-sm font-medium text-gray-900">{title}</p>
+      {desc && <p className="text-xs text-gray-500 mt-1 max-w-sm">{desc}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
 
-  if (activeModule === 'institutes') {
+function ErrorState({ message }: { message?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <AlertCircle className="h-6 w-6 text-rose-400 mb-3" />
+      <p className="text-sm font-medium text-gray-900">Failed to load</p>
+      <p className="text-xs text-gray-500 mt-1 max-w-sm">
+        {message || 'Something went wrong. Please try again.'}
+      </p>
+    </div>
+  );
+}
+
+function StatusBadge({ status, blocked }: { status?: string; blocked?: boolean }) {
+  if (blocked) {
     return (
-      <InstitutesManager
-        institutes={institutes}
-        loading={institutesLoading}
-        onRefresh={refreshAll}
-        showAdd={showAdd}
-        setShowAdd={setShowAdd}
-      />
+      <span className="inline-flex items-center rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+        Blocked
+      </span>
     );
   }
-  if (activeModule === 'platform-analytics') {
-    return <PlatformAnalytics finance={finance} financeLoading={financeLoading} institutes={institutes} onRefresh={refreshFinance} />;
-  }
-  if (activeModule === 'announcements') {
-    return <AnnouncementsView user={user} institutes={institutes} institutesLoading={institutesLoading} />;
-  }
-  if (activeModule === 'config') {
-    return <PlatformConfig overview={overview} loading={overviewLoading} />;
-  }
-  if (activeModule === 'branding') {
-    return <BrandingPage />;
-  }
-  // Default: dashboard overview
+  const s = (status || 'Active').toLowerCase();
+  const cls =
+    s === 'active'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+      : s === 'inactive'
+        ? 'bg-gray-100 text-gray-600 border-gray-200'
+        : 'bg-amber-50 text-amber-700 border-amber-100';
   return (
-    <PlatformOverview
-      overview={overview}
-      overviewLoading={overviewLoading}
-      onAddInstitute={() => setShowAdd(true)}
-      onRefreshAll={refreshAll}
-      user={user}
-      showAdd={showAdd}
-      setShowAdd={setShowAdd}
-    />
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium capitalize',
+        cls,
+      )}
+    >
+      {status || 'Active'}
+    </span>
   );
 }
 
-// ---------- Shared UI bits ----------
-function ModuleHeader({ title, subtitle, actions }: { title: string; subtitle: string; actions?: React.ReactNode }) {
+function RoleBadge({ role }: { role: string }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
-      </div>
-      {actions && <div className="flex gap-2 flex-wrap">{actions}</div>}
+    <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+      {ROLE_LABELS[role] || role}
+    </span>
+  );
+}
+
+function Field({
+  label,
+  required,
+  hint,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <Label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+        {label}
+        {required && <span className="text-[#F26522] ml-0.5">*</span>}
+      </Label>
+      {children}
+      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
     </div>
   );
 }
 
-function EmptyState({ icon: Icon, title, desc, action }: any) {
-  return (
-    <Card className="p-10 text-center">
-      <div className="inline-flex h-14 w-14 rounded-2xl bg-muted/60 items-center justify-center mb-4">
-        <Icon className="h-7 w-7 text-muted-foreground" />
-      </div>
-      <h3 className="font-bold text-lg">{title}</h3>
-      <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">{desc}</p>
-      {action && <div className="mt-5">{action}</div>}
-    </Card>
-  );
-}
+// ═══════════════════════════════════════════════════════════════
+// SuperAdminDashboard — Product Owner welcome + college-wide stats
+// ═══════════════════════════════════════════════════════════════
 
-function LoadingState({ label = 'Loading…', className = '' }: { label?: string; className?: string }) {
-  return (
-    <div className={`flex items-center justify-center gap-2.5 py-10 text-muted-foreground ${className}`}>
-      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-      <span className="text-sm">{label}</span>
-    </div>
-  );
-}
-
-function StatPill({ label, value, color = 'text-foreground' }: { label: string; value: React.ReactNode; color?: string }) {
-  return (
-    <div className="rounded-lg bg-muted/40 border border-border/60 px-3 py-2 text-center">
-      <div className={`text-lg font-extrabold ${color}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</div>
-    </div>
-  );
-}
-
-// ---------- Dashboard overview (default landing for super admin) ----------
-function PlatformOverview({
-  overview, overviewLoading, onAddInstitute, onRefreshAll, user, showAdd, setShowAdd,
-}: any) {
-  const setActiveModule = useApp(s => s.setActiveModule);
-  const cards = [
-    { label: 'Institutions', value: overview?.institutes ?? 0, icon: Building2, color: 'from-primary to-primary/80', sub: `${overview?.activeInstitutes ?? 0} active` },
-    { label: 'Branches', value: overview?.branches ?? 0, icon: Network, color: 'from-primary to-primary/80', sub: 'across all institutions' },
-    { label: 'Total Students', value: overview?.totalStudents ?? 0, icon: Users, color: 'from-primary/80 to-primary', sub: 'platform-wide' },
-    { label: 'Total Staff', value: overview?.totalStaff ?? 0, icon: UserCog, color: 'from-primary/80 to-primary', sub: 'teachers & managers' },
-  ];
-
-  const quickActions = [
-    { icon: TrendingUp, title: 'View Analytics', subtitle: 'Revenue, salary, institute performance & transactions', target: 'platform-analytics' as const },
-    { icon: Building2, title: 'Manage Institutes', subtitle: 'Provision, edit, block or remove institutions', target: 'institutes' as const },
-    { icon: MessageSquare, title: 'Send Announcement', subtitle: 'Broadcast messages to institutes & branches', target: 'announcements' as const },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 p-6 sm:p-8 text-white"
-      >
-        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-[oklch(0.5_0.04_260)_/_0.15] blur-3xl" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] mb-3 border border-white/15">
-              <Crown className="h-3 w-3 text-primary/70" /> Super Admin · Platform Owner
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold">
-              Welcome back, {user?.name?.split(' ')[0] || 'Owner'}
-            </h1>
-            <p className="text-white/80 text-sm mt-1.5 max-w-lg">
-              {overviewLoading ? 'Loading platform stats…' : (overview?.institutes ? `${overview.institutes} institutions onboarded.` : 'Provision your first institute to get started.')}
-            </p>
-          </div>
-          <Button className="bg-white text-primary hover:bg-accent" size="sm" onClick={onAddInstitute}>
-            <Plus className="h-4 w-4 mr-1.5" /> Provision Institute
-          </Button>
-        </div>
-      </motion.div>
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-        {overviewLoading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="p-3">
-              <div className="h-11 w-11 rounded-xl bg-muted/60 animate-pulse" />
-              <div className="mt-4 h-7 w-16 rounded bg-muted/60 animate-pulse" />
-              <div className="mt-1.5 h-3 w-24 rounded bg-muted/40 animate-pulse" />
-            </Card>
-          ))
-        ) : (
-          cards.map((c, i) => (
-            <motion.div key={c.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
-              <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center">
-                  <c.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="mt-4">
-                  <div className="text-xl sm:text-2xl font-bold tabular-nums">
-                    {typeof c.value === 'number' ? c.value.toLocaleString() : c.value}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{c.label}</div>
-                  <div className="text-[11px] text-muted-foreground mt-1">{c.sub}</div>
-                </div>
-              </Card>
-            </motion.div>
-          ))
-        )}
-      </div>
-
-      {/* Quick Actions */}
-      <div>
-        <div className="mb-3">
-          <h2 className="font-bold text-base">Quick Actions</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Jump straight to common platform workflows</p>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {quickActions.map((a) => (
-            <div
-              key={a.target}
-              onClick={() => setActiveModule(a.target)}
-              className="group border border-border rounded-lg shadow-sm hover:shadow-md transition cursor-pointer p-3 sm:p-4 flex items-center gap-4"
-            >
-              <div className="h-11 w-11 shrink-0 rounded-xl bg-primary/10 grid place-items-center">
-                <a.icon className="h-5 w-5 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-bold text-base">{a.title}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{a.subtitle}</div>
-              </div>
-              <ChevronRight className="h-5 w-5 text-primary opacity-0 group-hover:opacity-100 transition shrink-0" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {showAdd && (
-        <ProvisionInstituteModal
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); onRefreshAll(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ---------- Platform Analytics (dedicated financial analytics page) ----------
-function PlatformAnalytics({ finance, financeLoading, institutes, onRefresh }: any) {
-  const finKpis = finance?.kpi;
-  const finLoading = financeLoading || !finance;
-
-  // ---- Revenue form state ----
-  const currentMonthName = MONTHS[new Date().getMonth()];
-  const [revInstituteId, setRevInstituteId] = useState<string>('');
-  const [revMonth, setRevMonth] = useState<string>(currentMonthName);
-  const [revYear, setRevYear] = useState<string>(String(new Date().getFullYear()));
-  const [revAmount, setRevAmount] = useState<string>('');
-  const [revSubmitting, setRevSubmitting] = useState(false);
-  const [revDeletingId, setRevDeletingId] = useState<string | null>(null);
-
-  const selectedInstitute = institutes?.find((i: any) => i.id === revInstituteId);
-  const noInstitutes = !institutes || institutes.length === 0;
-
-  const handleAddRevenue = async () => {
-    if (!revInstituteId || !revMonth || !revYear || !revAmount) {
-      toast({ title: 'Missing fields', description: 'Please select institute, month, year and enter an amount.', variant: 'destructive' });
-      return;
-    }
-    const amountNum = Number(revAmount);
-    if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      toast({ title: 'Invalid amount', description: 'Amount must be a positive number.', variant: 'destructive' });
-      return;
-    }
-    setRevSubmitting(true);
-    try {
-      const res: any = await api.addRevenue({
-        sourceType: 'institute',
-        sourceId: revInstituteId,
-        sourceName: selectedInstitute?.name || '',
-        amount: amountNum,
-        month: revMonth,
-        year: Number(revYear),
-        notes: '',
-      });
-      toast({
-        title: res?.updated ? 'Revenue updated' : 'Revenue added',
-        description: `${selectedInstitute?.name || 'Institute'} · ${formatPKR(amountNum)} for ${revMonth} ${revYear}`,
-      });
-      setRevAmount('');
-      onRefresh?.();
-    } catch (e: any) {
-      toast({ title: 'Failed to add revenue', description: e?.message || 'Something went wrong', variant: 'destructive' });
-    } finally {
-      setRevSubmitting(false);
-    }
-  };
-
-  const handleDeleteRevenue = async (id: string) => {
-    setRevDeletingId(id);
-    try {
-      await api.deleteRevenue(id);
-      toast({ title: 'Revenue entry deleted' });
-      onRefresh?.();
-    } catch (e: any) {
-      toast({ title: 'Failed to delete', description: e?.message || 'Something went wrong', variant: 'destructive' });
-    } finally {
-      setRevDeletingId(null);
-    }
-  };
-
-  const revenueEntries: any[] = Array.isArray(finance?.revenueEntries) ? finance.revenueEntries : [];
-
-  const handleExportInstitutePerformance = () => {
-    if (!finance?.institutePerformance) return;
-    const rows: (string | number)[][] = finance.institutePerformance.map((inst: any) => [
-      inst.name || '',
-      inst.city || '',
-      inst.admin || '',
-      Number(inst.branches || 0),
-      Number(inst.students || 0),
-      Number(inst.revenue || 0),
-      Number(inst.pendingFees || 0),
-      Number(inst.salaryPaid || 0),
-      Number(inst.net || 0),
-      inst.status || '',
-    ]);
-    exportToCSV('institute-performance', ['Institute', 'City', 'Admin', 'Branches', 'Students', 'Revenue', 'Pending Fees', 'Salary Paid', 'Net', 'Status'], rows);
-    toast({ title: 'CSV exported', description: 'Institute performance downloaded as institute-performance.csv' });
-  };
-
-  return (
-    <div className="space-y-6">
-      <ModuleHeader
-        title="Analytics"
-        subtitle="Revenue, salary and institute performance insights"
-        actions={
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-border"
-            onClick={handleExportInstitutePerformance}
-            disabled={finLoading || !finance?.institutePerformance?.length}
-          >
-            <FileText className="h-4 w-4 mr-1.5" /> Export CSV
-          </Button>
-        }
-      />
-
-      {/* Revenue Management — manual entry form */}
-      <Card className="border border-border rounded-lg shadow-sm p-3 sm:p-4">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-primary" /> Revenue Management
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Enter monthly revenue received from each institute</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <Label className="text-xs">Institute</Label>
-            <Select value={revInstituteId} onValueChange={setRevInstituteId} disabled={noInstitutes}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder={noInstitutes ? 'Add institutes first' : 'Select institute'} />
-              </SelectTrigger>
-              <SelectContent>
-                {institutes?.map((inst: any) => (
-                  <SelectItem key={inst.id} value={inst.id}>{inst.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Month</Label>
-            <Select value={revMonth} onValueChange={setRevMonth}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Select month" /></SelectTrigger>
-              <SelectContent>
-                {MONTHS.map((m) => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Year</Label>
-            <Input
-              type="number"
-              className="mt-1"
-              value={revYear}
-              onChange={(e) => setRevYear(e.target.value)}
-              placeholder={String(new Date().getFullYear())}
-              min={2000}
-              max={2100}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Amount (PKR)</Label>
-            <Input
-              type="number"
-              className="mt-1"
-              value={revAmount}
-              onChange={(e) => setRevAmount(e.target.value)}
-              placeholder="e.g. 50000"
-              min={0}
-            />
-          </div>
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <Button
-            className="bg-primary hover:bg-primary/90 text-white"
-            onClick={handleAddRevenue}
-            disabled={revSubmitting || noInstitutes}
-          >
-            {revSubmitting ? (
-              <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Saving…</>
-            ) : (
-              <><Plus className="h-4 w-4 mr-1.5" /> Add Revenue</>
-            )}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Re-entering an existing institute + month + year will update the amount.
-          </p>
-        </div>
-      </Card>
-
-      {/* Revenue Entries table */}
-      <Card className="border border-border rounded-lg shadow-sm p-3 sm:p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" /> Revenue Entries
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              All manually-entered revenue across institutes{revenueEntries.length > 0 ? ` · ${revenueEntries.length} entr${revenueEntries.length === 1 ? 'y' : 'ies'}` : ''}
-            </p>
-          </div>
-        </div>
-        {revenueEntries.length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">
-            No revenue entries yet. Add your first entry above.
-          </div>
-        ) : (
-          <div className="max-h-96 overflow-y-auto">
-            <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
-                <TableRow>
-                  <TableHead>Institute</TableHead>
-                  <TableHead>Month</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="w-[60px] text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {revenueEntries.map((r: any) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.sourceName || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.month}</TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">{r.year}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold text-emerald-600 whitespace-nowrap">{formatPKR(r.amount)}</TableCell>
-                    <TableCell className="text-muted-foreground max-w-xs truncate">{r.notes || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <button
-                        type="button"
-                        aria-label="Delete revenue entry"
-                        className="h-8 w-8 grid place-items-center rounded-lg text-rose-500 hover:bg-rose-500/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => handleDeleteRevenue(r.id)}
-                        disabled={revDeletingId === r.id}
-                      >
-                        {revDeletingId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </Card>
-
-      {/* Financial KPI cards (platform-wide finance) */}
-      {finLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="p-5 border border-border rounded-lg shadow-sm">
-              <div className="h-11 w-11 rounded-xl bg-muted/60 animate-pulse" />
-              <div className="mt-4 h-6 w-20 rounded bg-muted/60 animate-pulse" />
-              <div className="mt-1.5 h-3 w-24 rounded bg-muted/40 animate-pulse" />
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
-          {/* Total Revenue */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center">
-              <DollarSign className="h-5 w-5 text-primary" />
-            </div>
-            <div className="mt-4">
-              <div className="text-base sm:text-lg font-extrabold tabular-nums truncate">{formatPKR(finKpis.totalRevenue)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Total Revenue</div>
-            </div>
-          </Card>
-          {/* Pending Fees */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className="h-9 w-9 rounded-lg bg-rose-500/10 grid place-items-center">
-              <AlertCircle className="h-5 w-5 text-rose-600" />
-            </div>
-            <div className="mt-4">
-              <div className="text-base sm:text-lg font-extrabold tabular-nums truncate text-rose-600">{formatPKR(finKpis.pendingFees)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Pending Fees</div>
-            </div>
-          </Card>
-          {/* Salary Paid */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center">
-              <Wallet className="h-5 w-5 text-primary" />
-            </div>
-            <div className="mt-4">
-              <div className="text-base sm:text-lg font-extrabold tabular-nums truncate">{formatPKR(finKpis.totalSalaryPaid)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Salary Paid</div>
-            </div>
-          </Card>
-          {/* Net Balance */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className={`h-9 w-9 rounded-lg grid place-items-center ${finKpis.netBalance >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
-              <Scale className={`h-5 w-5 ${finKpis.netBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} />
-            </div>
-            <div className="mt-4">
-              <div className={`text-base sm:text-lg font-extrabold tabular-nums truncate ${finKpis.netBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatPKR(finKpis.netBalance)}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Net Balance</div>
-            </div>
-          </Card>
-          {/* Total Invoices */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
-            <div className="mt-4">
-              <div className="text-base sm:text-lg font-extrabold tabular-nums">{Number(finKpis.totalInvoices || 0).toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Total Invoices</div>
-              <div className="text-[11px] text-muted-foreground mt-1">{finKpis.paidInvoices} paid · {finKpis.unpaidInvoices} unpaid</div>
-            </div>
-          </Card>
-          {/* Active Institutes */}
-          <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center">
-              <Building2 className="h-5 w-5 text-primary" />
-            </div>
-            <div className="mt-4">
-              <div className="text-base sm:text-lg font-extrabold tabular-nums">{Number(finKpis.activeInstitutes || 0).toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Active Institutes</div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Charts row — monthly revenue vs salary + yearly trend */}
-      {finLoading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i} className="p-5 border border-border rounded-lg shadow-sm">
-              <div className="h-5 w-56 rounded bg-muted/60 animate-pulse" />
-              <div className="h-3 w-72 mt-1.5 rounded bg-muted/40 animate-pulse" />
-              <div className="mt-6 h-64 rounded bg-muted/40 animate-pulse" />
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="p-5 border border-border rounded-lg shadow-sm">
-            <div>
-              <h3 className="font-bold text-base">Platform Revenue vs Salary (Last 12 Months)</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Monthly fee collection vs salary payouts across all institutes</p>
-            </div>
-            <div className="h-72 mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={finance.monthlyRevenue} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={72} />
-                  <Tooltip formatter={(v: any) => formatPKR(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="revenue" name="Revenue" fill="#F26522" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="salary" name="Salary" fill="#e11d48" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-          <Card className="p-5 border border-border rounded-lg shadow-sm">
-            <div>
-              <h3 className="font-bold text-base">Yearly Revenue Trend</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">5-year comparison</p>
-            </div>
-            <div className="h-72 mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={finance.yearlyRevenue} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#F26522" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#F26522" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="gradSal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#e11d48" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#e11d48" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={72} />
-                  <Tooltip formatter={(v: any) => formatPKR(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#F26522" strokeWidth={2} fill="url(#gradRev)" />
-                  <Area type="monotone" dataKey="salary" name="Salary" stroke="#e11d48" strokeWidth={2} fill="url(#gradSal)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Institute Performance table */}
-      {finLoading ? (
-        <Card className="p-5 border border-border rounded-lg shadow-sm">
-          <div className="h-5 w-44 rounded bg-muted/60 animate-pulse" />
-          <div className="mt-4 space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-9 rounded bg-muted/40 animate-pulse" />
-            ))}
-          </div>
-        </Card>
-      ) : (
-        <Card className="p-5 border border-border rounded-lg shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" /> Institute Performance
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Revenue comparison across all institutes (sorted by revenue, desc)</p>
-            </div>
-            <Button size="sm" variant="outline" className="border-border shrink-0" onClick={handleExportInstitutePerformance}>
-              <FileText className="h-4 w-4 mr-1.5" /> Export CSV
-            </Button>
-          </div>
-          <div className="max-h-96 overflow-y-auto">
-            <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
-                <TableRow>
-                  <TableHead>Institute</TableHead>
-                  <TableHead>City</TableHead>
-                  <TableHead>Admin</TableHead>
-                  <TableHead className="text-right">Branches</TableHead>
-                  <TableHead className="text-right">Students</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
-                  <TableHead className="text-right">Pending Fees</TableHead>
-                  <TableHead className="text-right">Salary Paid</TableHead>
-                  <TableHead className="text-right">Net</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {finance.institutePerformance.map((inst: any) => (
-                  <TableRow key={inst.id}>
-                    <TableCell className="font-medium">{inst.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{inst.city || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{inst.admin}</TableCell>
-                    <TableCell className="text-right tabular-nums">{inst.branches}</TableCell>
-                    <TableCell className="text-right tabular-nums">{Number(inst.students || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">{formatPKR(inst.revenue)}</TableCell>
-                    <TableCell className="text-right tabular-nums text-rose-600">{formatPKR(inst.pendingFees)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatPKR(inst.salaryPaid)}</TableCell>
-                    <TableCell className={`text-right tabular-nums font-medium ${inst.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatPKR(inst.net)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`text-[10px] font-medium ${
-                        inst.status === 'Blocked' ? 'text-rose-600 bg-rose-500/10 border-rose-500/20' :
-                        inst.status === 'Trial' ? 'text-amber-700 bg-amber-500/10 border-amber-500/20' :
-                        'text-primary bg-primary/10 border-primary/20'
-                      }`}>{inst.status}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      )}
-
-      {/* Recent Platform Transactions table */}
-      {finLoading ? (
-        <Card className="p-5 border border-border rounded-lg shadow-sm">
-          <div className="h-5 w-48 rounded bg-muted/60 animate-pulse" />
-          <div className="mt-4 space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-9 rounded bg-muted/40 animate-pulse" />
-            ))}
-          </div>
-        </Card>
-      ) : (
-        <Card className="p-5 border border-border rounded-lg shadow-sm">
-          <div className="mb-4">
-            <h3 className="font-bold text-base">Recent Platform Transactions</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Latest fee payments and salary payouts across the platform</p>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Party</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {finance.recentTransactions.slice(0, 10).map((tx: any) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="text-muted-foreground whitespace-nowrap">{tx.date ? new Date(tx.date).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={`text-[10px] font-medium ${
-                      tx.type === 'Fee Payment' ? 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20' :
-                      'text-rose-600 bg-rose-500/10 border-rose-500/20'
-                    }`}>{tx.type}</Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{tx.party}</TableCell>
-                  <TableCell className="text-muted-foreground">{tx.method || '—'}</TableCell>
-                  <TableCell className={`text-right tabular-nums font-medium whitespace-nowrap ${
-                    tx.type === 'Fee Payment' ? 'text-emerald-700' : 'text-rose-600'
-                  }`}>{formatPKR(tx.amount)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ---------- Institutes manager (dedicated page) ----------
-function InstitutesManager({ institutes, loading, onRefresh, showAdd, setShowAdd }: any) {
-  return (
-    <div className="space-y-6">
-      <ModuleHeader
-        title="Institutes"
-        subtitle="Provision institutions — click any card to expand and view branches"
-        actions={
-          <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowAdd(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Provision Institute
-          </Button>
-        }
-      />
-      {loading ? (
-        <Card className="p-5"><LoadingState label="Loading institutes…" /></Card>
-      ) : institutes.length === 0 ? (
-        <EmptyState
-          icon={Building}
-          title="No institutions yet"
-          desc="Provision your first institute. You'll set the admin's email and password."
-          action={
-            <Button className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowAdd(true)}>
-              <Plus className="h-4 w-4 mr-1.5" /> Provision Institute
-            </Button>
-          }
-        />
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {institutes.map((inst: any) => (
-            <InstituteCard key={inst.id} inst={inst} onRefresh={onRefresh} />
-          ))}
-        </div>
-      )}
-      {showAdd && (
-        <ProvisionInstituteModal
-          onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); onRefresh(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ---------- Institute card (opens modal popup on click) ----------
-function InstituteCard({ inst, onRefresh }: { inst: any; onRefresh: () => void }) {
-  const [showDetails, setShowDetails] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
-  const [showDelete, setShowDelete] = useState(false);
-  const [blocked, setBlocked] = useState<boolean>(inst.blocked === 1 || inst.blocked === true);
-
-  const isBlocked = blocked || inst.status === 'Blocked';
-  const statusLabel = isBlocked ? 'Blocked' : (inst.status === 'Trial' ? 'Trial' : 'Active');
-  const statusClass = isBlocked
-    ? 'text-rose-600 bg-rose-500/10 border-rose-500/20'
-    : inst.status === 'Trial'
-      ? 'text-sky-700 bg-sky-500/10 border-sky-500/20'
-      : 'text-primary bg-accent0/10 border-[oklch(0.5_0.04_260)_/_0.2]';
-
-  const toggleBlock = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await api.blockInstitute(inst.id, !blocked, !blocked ? 'Blocked by Super Admin' : '');
-      setBlocked(!blocked);
-      toast({
-        title: blocked ? 'Institute unblocked' : 'Institute blocked',
-        description: blocked ? 'Access restored to all branches & users' : 'All branches and users are now blocked (cascade)',
-      });
-      onRefresh();
-    } catch (e: any) {
-      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
-    }
-  };
-
-  const handleDelete = async () => {
-    try {
-      await api.deleteInstitute(inst.id);
-      toast({ title: 'Institute deleted', description: `${inst.name} and all its data have been removed.` });
-      setShowDelete(false);
-      onRefresh();
-    } catch (e: any) {
-      toast({ title: 'Failed to delete', description: e.message, variant: 'destructive' });
-    }
-  };
-
-  const initials = (inst.short || inst.name || '').slice(0, 2).toUpperCase();
-
-  return (
-    <>
-      <Card
-        className={`p-5 hover:shadow-md transition relative cursor-pointer border border-border rounded-lg shadow-sm ${isBlocked ? 'ring-1 ring-rose-500/30' : ''}`}
-        onClick={() => setShowDetails(true)}
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="h-11 w-11 shrink-0 rounded-xl bg-primary/10 grid place-items-center text-primary font-extrabold">
-              {initials}
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-base truncate">{inst.name}</h3>
-              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                <MapPin className="h-3 w-3" /> {inst.city ? `${inst.city}, ` : ''}{inst.country || '—'}
-              </div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <Badge variant="outline" className="text-[10px] font-normal border-border/60">{inst.plan || 'Starter'}</Badge>
-                <Badge variant="outline" className={`text-[10px] font-medium ${statusClass}`}>{statusLabel}</Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/40">
-          <div className="text-xs min-w-0">
-            <div className="text-muted-foreground">Admin</div>
-            <div className="font-medium truncate">{inst.adminName || '—'}</div>
-          </div>
-          {/* Action buttons — stop propagation so they don't open the details modal */}
-          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setShowEdit(true)}
-              title="Edit"
-              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition"
-            >
-              <Edit className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={toggleBlock}
-              title={isBlocked ? 'Unblock' : 'Block (cascades to branches & users)'}
-              className={`h-8 w-8 grid place-items-center rounded-lg transition ${
-                isBlocked ? 'text-rose-600 hover:bg-rose-500/10' : 'text-primary hover:bg-accent0/10'
-              }`}
-            >
-              {isBlocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowDelete(true)}
-              title="Delete institute"
-              className="h-8 w-8 grid place-items-center rounded-lg text-rose-500 hover:bg-rose-500/10 transition"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Details modal — opens when clicking the card */}
-      {showDetails && (
-        <InstituteDetailsModal inst={inst} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true); }} />
-      )}
-
-      {/* Edit modal */}
-      {showEdit && (
-        <EditInstituteModal inst={inst} onClose={() => setShowEdit(false)} onSaved={() => { setShowEdit(false); onRefresh(); }} />
-      )}
-
-      {/* Delete confirmation */}
-      {showDelete && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50" onClick={() => setShowDelete(false)}>
-          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} onClick={e => e.stopPropagation()} className="w-full max-w-md">
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-12 w-12 rounded-full bg-rose-100 grid place-items-center"><Trash2 className="h-6 w-6 text-rose-600" /></div>
-                <div><h3 className="font-bold text-lg">Delete Institute?</h3><p className="text-sm text-muted-foreground">This action cannot be undone.</p></div>
-              </div>
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 mb-4">
-                This will permanently delete <strong>{inst.name}</strong> and ALL its data: branches, teachers, students, classes, courses, attendance, results, and materials.
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white flex-1" onClick={handleDelete}>Delete Permanently</Button>
-                <Button size="sm" variant="outline" onClick={() => setShowDelete(false)}>Cancel</Button>
-              </div>
-            </Card>
-          </motion.div>
-        </motion.div>
-      )}
-    </>
-  );
-}
-
-// ---------- Institute Details Modal (popup) ----------
-function InstituteDetailsModal({ inst, onClose, onEdit }: { inst: any; onClose: () => void; onEdit: () => void }) {
+function SuperAdminDashboard({
+  user,
+  setActiveModule,
+}: {
+  user: any;
+  setActiveModule: (id: string) => void;
+}) {
+  const [overview, setOverview] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [finance, setFinance] = useState<any>(null);
   const [branches, setBranches] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const firstName = (user?.name || 'Owner').split(' ')[0];
+
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
-      api.branches(inst.id).catch(() => []),
-      api.scopedStats(inst.id).catch(() => null),
-    ]).then(([b, s]) => {
+      api.platformOverview().catch(() => null),
+      api.platformUsers({}).catch(() => []),
+      api.getAnnouncements().catch(() => []),
+      api.getPlatformFinance().catch(() => null),
+      api.branches().catch(() => []),
+    ]).then(([o, u, a, f, b]) => {
+      if (cancelled) return;
+      setOverview(o);
+      setUsers(Array.isArray(u) ? u : []);
+      setAnnouncements(Array.isArray(a) ? a.slice(0, 5) : []);
+      setFinance(f);
       setBranches(Array.isArray(b) ? b : []);
-      setStats(s);
       setLoading(false);
     });
-  }, [inst.id]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const isBlocked = inst.blocked === 1 || inst.blocked === true;
+  const students = useMemo(() => users.filter((u) => u.role === 'student'), [users]);
+  const teachers = useMemo(() => users.filter((u) => u.role === 'teacher'), [users]);
+  const staff = useMemo(() => users.filter((u) => STAFF_ROLES.includes(u.role)), [users]);
 
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/50 overflow-y-auto" onClick={onClose}>
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()} className="w-full max-w-2xl my-8">
-        <Card className="p-0 max-h-[90vh] overflow-y-auto scroll-fancy">
-          {/* Header */}
-          <div className="p-6 border-b border-border/40 bg-gradient-to-br from-accent to-muted">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 grid place-items-center shadow-md text-white font-extrabold text-lg">
-                  {(inst.short || inst.name || '').slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <h2 className="text-xl font-extrabold">{inst.name}</h2>
-                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5"><MapPin className="h-3 w-3" /> {inst.city ? `${inst.city}, ` : ''}{inst.country || '—'}</div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="outline" className="text-[10px]">{inst.plan || 'Starter'}</Badge>
-                    <Badge variant="outline" className={`text-[10px] ${isBlocked ? 'text-rose-600 bg-rose-500/10 border-rose-500/20' : 'text-primary bg-accent0/10 border-[oklch(0.5_0.04_260)_/_0.2]'}`}>{isBlocked ? 'Blocked' : (inst.status === 'Trial' ? 'Trial' : 'Active')}</Badge>
-                  </div>
-                </div>
-              </div>
-              <button onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-accent text-muted-foreground"><X className="h-5 w-5" /></button>
-            </div>
-          </div>
+  const feeCollected =
+    overview?.totalRevenue ??
+    finance?.kpi?.totalRevenue ??
+    0;
 
-          {/* Body */}
-          <div className="p-6 space-y-5">
-            {/* Stats */}
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Overview</div>
-              <div className="grid grid-cols-3 gap-3">
-                <StatPill label="Branches" value={loading ? '…' : (stats?.branches ?? inst.branches ?? 0)} color="text-primary" />
-                <StatPill label="Students" value={loading ? '…' : (stats?.students ?? inst.students ?? 0)} color="text-primary" />
-                <StatPill label="Staff" value={loading ? '…' : (stats?.staff ?? inst.staff ?? 0)} color="text-primary" />
-              </div>
-            </div>
-
-            {/* Admin info */}
-            <div className="rounded-xl bg-muted/40 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Institute Admin</div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-sm">{inst.adminName || '—'}</div>
-                  <div className="text-xs text-muted-foreground">{inst.adminEmail || '—'}</div>
-                </div>
-                <Button size="sm" variant="outline" onClick={onEdit}><Edit className="h-3.5 w-3.5 mr-1" /> Edit</Button>
-              </div>
-            </div>
-
-            {/* Branches list */}
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center justify-between">
-                <span>Branches ({branches.length})</span>
-              </div>
-              {loading ? (
-                <LoadingState label="Loading branches…" className="py-4" />
-              ) : branches.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-3 text-center bg-muted/30 rounded-lg">No branches yet.</div>
-              ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto scroll-fancy">
-                  {branches.map((br: any) => <BranchRow key={br.id} br={br} />)}
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-      </motion.div>
-    </motion.div>
+  const recentUsers = useMemo(
+    () =>
+      [...users]
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .slice(0, 6),
+    [users],
   );
-}
 
-function BranchRow({ br }: { br: any }) {
-  const isBlocked = br.blocked === 1 || br.blocked === true;
+  const quickActions = [
+    {
+      icon: UserCog,
+      title: 'Manage Office Staff',
+      subtitle: 'Edit accounts, reset passwords, block access',
+      target: 'super-staff',
+    },
+    {
+      icon: Megaphone,
+      title: 'Broadcast Announcement',
+      subtitle: 'Send a college-wide notice to staff, teachers or students',
+      target: 'super-announcements',
+    },
+    {
+      icon: Users,
+      title: 'View Teachers',
+      subtitle: 'Audit teacher accounts and reset credentials',
+      target: 'super-teachers',
+    },
+    {
+      icon: GraduationCap,
+      title: 'View Students',
+      subtitle: 'Audit student accounts across all classes',
+      target: 'super-students',
+    },
+    {
+      icon: DollarSign,
+      title: 'Fee Collection',
+      subtitle: 'Review collected fees and recent transactions',
+      target: 'super-fees',
+    },
+    {
+      icon: Building2,
+      title: 'Branches & Classes',
+      subtitle: 'Inspect the college structure and course catalog',
+      target: 'super-branches',
+    },
+  ];
+
   return (
-    <div className="rounded-lg border border-border/60 bg-background p-3 hover:bg-accent/40 transition">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-medium text-sm truncate flex items-center gap-1.5">
-            <Building className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="truncate">{br.name}</span>
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
-            <MapPin className="h-3 w-3" /> {br.city || '—'}
-            {br.manager && (<><span className="mx-1">·</span><UserCog className="h-3 w-3" /> {br.manager}</>)}
-          </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={`Welcome back, ${firstName}`}
+        subtitle="Product Owner — college-wide oversight of Concordia College."
+        action={
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600">
+            <Crown className="h-3.5 w-3.5 text-[#F26522]" />
+            Product Owner
+          </span>
+        }
+      />
+
+      {/* ── KPI cards ── */}
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
         </div>
-        <Badge
-          variant="outline"
-          className={`text-[10px] shrink-0 ${isBlocked ? 'text-rose-600 bg-rose-500/10 border-rose-500/20' : 'text-primary bg-accent0/10 border-[oklch(0.5_0.04_260)_/_0.2]'}`}
-        >
-          {isBlocked ? 'Blocked' : 'Active'}
-        </Badge>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <StatCard
+            icon={GraduationCap}
+            label="Total Students"
+            value={overview?.totalStudents ?? students.length}
+            sub="Enrolled across the college"
+            onClick={() => setActiveModule('super-students')}
+          />
+          <StatCard
+            icon={Users}
+            label="Teachers"
+            value={overview?.totalStaff ?? teachers.length}
+            sub="Active faculty members"
+            onClick={() => setActiveModule('super-teachers')}
+          />
+          <StatCard
+            icon={UserCog}
+            label="Office Staff"
+            value={staff.length}
+            sub="Admin · admissions · accounts · academic"
+            onClick={() => setActiveModule('super-staff')}
+          />
+          <StatCard
+            icon={Building2}
+            label="Branches"
+            value={overview?.branches ?? branches.length}
+            sub="Across Concordia College"
+            onClick={() => setActiveModule('super-branches')}
+          />
+          <StatCard
+            icon={DollarSign}
+            label="Fee Collected"
+            value={fmtMoney(feeCollected)}
+            sub="Total paid fees"
+            onClick={() => setActiveModule('super-fees')}
+          />
+          <StatCard
+            icon={Megaphone}
+            label="Announcements"
+            value={announcements.length}
+            sub="Recent college broadcasts"
+            onClick={() => setActiveModule('super-announcements')}
+          />
+        </div>
+      )}
+
+      {/* ── Two-column: recent announcements + recent users ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader
+            title="Recent Announcements"
+            desc="Latest college-wide broadcasts"
+            action={
+              <button
+                onClick={() => setActiveModule('super-announcements')}
+                className="text-[11px] font-medium text-[#F26522] hover:underline inline-flex items-center gap-1"
+              >
+                View all <ChevronRight className="h-3 w-3" />
+              </button>
+            }
+          />
+          {loading ? (
+            <div className="space-y-2.5">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-16" />
+              ))}
+            </div>
+          ) : announcements.length === 0 ? (
+            <EmptyState
+              icon={Megaphone}
+              title="No announcements yet"
+              desc="Broadcast your first college-wide notice from the Announcements module."
+            />
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {announcements.map((a, i) => (
+                <li
+                  key={a.id || i}
+                  className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <Megaphone className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-900 truncate">
+                        {a.title}
+                      </span>
+                      {a.targetRole && (
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 border border-gray-200 rounded px-1.5 py-0.5">
+                          {ROLE_LABELS[a.targetRole] || a.targetRole}
+                        </span>
+                      )}
+                      {a.targetScope === 'all' && !a.targetRole && (
+                        <span className="text-[10px] uppercase tracking-wider text-[#F26522] border border-[#F26522]/20 bg-[#F26522]/5 rounded px-1.5 py-0.5">
+                          College-wide
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{a.message}</p>
+                    <span className="text-[11px] text-gray-400 mt-1 block">
+                      {relativeTime(a.createdAt)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader title="At a Glance" />
+          {loading ? (
+            <div className="space-y-3">
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-10" />
+              ))}
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {[
+                { label: 'Total Branches', value: overview?.branches ?? branches.length, icon: Building2 },
+                { label: 'Office Staff', value: staff.length, icon: UserCog },
+                { label: 'Teachers', value: overview?.totalStaff ?? teachers.length, icon: Users },
+                { label: 'Students', value: overview?.totalStudents ?? students.length, icon: GraduationCap },
+                { label: 'Fee Collected', value: fmtMoney(feeCollected), icon: DollarSign },
+              ].map((s) => (
+                <li
+                  key={s.label}
+                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <s.icon className="h-4 w-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">{s.label}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">{s.value}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 mt-2.5 pt-2.5 border-t border-border/40 text-center">
-        <div>
-          <div className="font-bold text-sm">{br.students ?? 0}</div>
-          <div className="text-[10px] text-muted-foreground">Students</div>
-        </div>
-        <div>
-          <div className="font-bold text-sm">{br.teachers ?? 0}</div>
-          <div className="text-[10px] text-muted-foreground">Teachers</div>
+
+      {/* ── Recent users table ── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="Recent Accounts"
+          desc="Latest created accounts across the college"
+          action={
+            <span className="text-[11px] text-gray-400">{users.length} total</span>
+          }
+        />
+        {loading ? (
+          <SkeletonTable rows={4} />
+        ) : recentUsers.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="No accounts yet"
+            desc="Office staff, teachers and students will appear here once created."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Role
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Created
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Status
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentUsers.map((u) => (
+                  <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                      {u.name}
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <RoleBadge role={u.role} />
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-600 truncate max-w-[200px]">
+                      {u.email || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-500">
+                      {fmtDate(u.createdAt)}
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <StatusBadge status={u.status} blocked={u.blocked} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Quick actions ── */}
+      <div>
+        <SectionHeader
+          title="Quick Actions"
+          desc="Jump straight to common oversight workflows"
+        />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {quickActions.map((a) => (
+            <button
+              key={a.target}
+              onClick={() => setActiveModule(a.target)}
+              className="group text-left border border-gray-200 rounded-xl bg-white hover:border-[#F26522] hover:shadow-sm transition p-4 flex items-center gap-3"
+            >
+              <div className="h-10 w-10 shrink-0 rounded-lg bg-gray-50 grid place-items-center group-hover:bg-[#F26522]/5">
+                <a.icon className="h-5 w-5 text-gray-500 group-hover:text-[#F26522]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-gray-900">{a.title}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{a.subtitle}</div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-[#F26522] shrink-0" />
+            </button>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-// ---------- Edit Institute modal (scrollable) ----------
-function EditInstituteModal({ inst, onClose, onSaved }: any) {
-  const [form, setForm] = useState({
-    name: inst.name || '',
-    plan: inst.plan || 'Starter',
-    adminName: inst.adminName || '',
-    adminEmail: inst.adminEmail || '',
-    adminPassword: '',
-  });
+// ═══════════════════════════════════════════════════════════════
+// SuperBranches — view all branches + classes + courses
+// ═══════════════════════════════════════════════════════════════
+
+function SuperBranches() {
+  const [branches, setBranches] = useState<any[]>([]);
+  const [institutes, setInstitutes] = useState<any[]>([]);
+  const [classesByBranch, setClassesByBranch] = useState<Record<string, any[]>>({});
+  const [coursesByClass, setCoursesByClass] = useState<Record<string, any[]>>({});
+  const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
+  const [expandedClass, setExpandedClass] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadClassesForBranch = async (branchId: string) => {
+    setClassesByBranch((prev) => {
+      if (prev[branchId]) return prev;
+      api
+        .getClasses(branchId)
+        .then((cls) =>
+          setClassesByBranch((p) => ({ ...p, [branchId]: Array.isArray(cls) ? cls : [] })),
+        )
+        .catch(() => setClassesByBranch((p) => ({ ...p, [branchId]: [] })));
+      return prev;
+    });
+  };
+
+  const loadCoursesForClass = async (classId: string) => {
+    setCoursesByClass((prev) => {
+      if (prev[classId]) return prev;
+      api
+        .getCourses({ classId })
+        .then((crs) =>
+          setCoursesByClass((p) => ({ ...p, [classId]: Array.isArray(crs) ? crs : [] })),
+        )
+        .catch(() => setCoursesByClass((p) => ({ ...p, [classId]: [] })));
+      return prev;
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.branches().catch(() => []),
+      api.institutes().catch(() => []),
+    ]).then(([b, i]) => {
+      if (cancelled) return;
+      const brs = Array.isArray(b) ? b : [];
+      const insts = Array.isArray(i) ? i : [];
+      setBranches(brs);
+      setInstitutes(insts);
+      // Auto-expand the first branch
+      if (brs.length > 0) {
+        setExpandedBranch(brs[0].id);
+        loadClassesForBranch(brs[0].id);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleBranch = (branchId: string) => {
+    setExpandedBranch((cur) => (cur === branchId ? null : branchId));
+    setExpandedClass(null);
+    loadClassesForBranch(branchId);
+  };
+
+  const toggleClass = (classId: string) => {
+    setExpandedClass((cur) => (cur === classId ? null : classId));
+    loadCoursesForClass(classId);
+  };
+
+  const instName = (id?: string) =>
+    institutes.find((i) => i.id === id)?.name || 'Concordia College';
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Branches & Classes"
+        subtitle="Inspect the college structure — branches, classes, and assigned courses."
+      />
+
+      {loading ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <SkeletonTable rows={4} />
+        </div>
+      ) : branches.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <EmptyState
+            icon={Building2}
+            title="No branches found"
+            desc="The Concordia College branch will appear here once initialized."
+          />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {branches.map((b) => {
+            const isOpen = expandedBranch === b.id;
+            const classes = classesByBranch[b.id] || [];
+            return (
+              <div
+                key={b.id}
+                className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+              >
+                <button
+                  onClick={() => toggleBranch(b.id)}
+                  className="w-full flex items-center justify-between gap-3 p-4 hover:bg-gray-50 transition text-left"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-9 w-9 shrink-0 rounded-lg bg-gray-50 grid place-items-center">
+                      <Building2 className="h-4 w-4 text-gray-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
+                        {b.name}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {instName(b.instituteId)} · {b.city || 'Main Campus'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-gray-400">
+                      {classes.length || '…'} classes
+                    </span>
+                    <ChevronRight
+                      className={cn(
+                        'h-4 w-4 text-gray-400 transition-transform',
+                        isOpen && 'rotate-90',
+                      )}
+                    />
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-gray-100 bg-gray-50/50 p-4 space-y-2">
+                    {classes.length === 0 ? (
+                      <EmptyState
+                        icon={BookOpen}
+                        title="No classes in this branch"
+                        desc="Classes are created by the Academic Office."
+                      />
+                    ) : (
+                      classes.map((c) => {
+                        const classOpen = expandedClass === c.id;
+                        const courses = coursesByClass[c.id] || [];
+                        return (
+                          <div
+                            key={c.id}
+                            className="rounded-lg border border-gray-200 bg-white overflow-hidden"
+                          >
+                            <button
+                              onClick={() => toggleClass(c.id)}
+                              className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition text-left"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <BookOpen className="h-4 w-4 text-gray-400 shrink-0" />
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {c.name}
+                                    {c.section ? (
+                                      <span className="text-gray-400"> · Section {c.section}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <span className="text-xs text-gray-400">
+                                  {courses.length || '…'} courses
+                                </span>
+                                <ChevronRight
+                                  className={cn(
+                                    'h-3.5 w-3.5 text-gray-400 transition-transform',
+                                    classOpen && 'rotate-90',
+                                  )}
+                                />
+                              </div>
+                            </button>
+                            {classOpen && (
+                              <div className="border-t border-gray-100 p-3 bg-white">
+                                {courses.length === 0 ? (
+                                  <p className="text-xs text-gray-400 py-2 text-center">
+                                                    No courses assigned to this class yet.
+                                  </p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2">
+                                    {courses.map((cr) => (
+                                      <span
+                                        key={cr.id}
+                                        className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700"
+                                      >
+                                        {cr.name}
+                                        {cr.code ? (
+                                          <span className="text-gray-400 ml-1.5">
+                                            ({cr.code})
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EditUserSheet — shared edit form for office staff / teachers / students
+// ═══════════════════════════════════════════════════════════════
+
+function EditUserSheet({
+  user,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  user: any;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setEmail(user.email || '');
+      setPassword('');
+    }
+  }, [user]);
+
   const save = async () => {
-    if (!form.name || !form.adminEmail) {
-      toast({ title: 'Institute name and admin email are required', variant: 'destructive' });
+    if (!user) return;
+    if (!name.trim()) {
+      toast({ title: 'Name is required', variant: 'destructive' });
       return;
     }
     setSaving(true);
     try {
-      // Only include adminPassword if the user typed a new one
-      const body: any = {
-        name: form.name,
-        plan: form.plan,
-        adminName: form.adminName,
-        adminEmail: form.adminEmail,
-      };
-      if (form.adminPassword.trim()) body.adminPassword = form.adminPassword.trim();
-      await api.editInstitute(inst.id, body);
+      const patch: any = { name: name.trim() };
+      if (email.trim() && email.trim() !== (user.email || '')) patch.email = email.trim();
+      if (password) patch.password = password;
+      await api.editUser(user.id, patch);
       toast({
-        title: 'Institute updated',
-        description: form.adminPassword ? 'Admin password updated — they will need to use the new one.' : 'Changes saved.',
+        title: 'Account updated',
+        description: password
+          ? 'Password reset — user will be prompted to change it on next login.'
+          : 'Changes saved successfully.',
       });
+      onOpenChange(false);
       onSaved();
     } catch (e: any) {
-      toast({ title: 'Failed to save', description: e.message, variant: 'destructive' });
+      toast({
+        title: 'Failed to update account',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] grid place-items-start sm:place-items-center p-4 bg-black/50 overflow-y-auto"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md my-8"
-      >
-        <Card className="p-6 max-h-[90vh] overflow-y-auto scroll-fancy">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-bold text-lg">Edit Institute</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Update institute info and admin credentials</p>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="text-gray-900">Edit Account</SheetTitle>
+          <SheetDescription>
+            Update profile details or reset the password. Changes apply immediately.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="space-y-4 px-4 pb-6">
+          {user && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-[11px] uppercase tracking-wider text-gray-400">
+                {ROLE_LABELS[user.role] || user.role}
+              </div>
+              <div className="text-sm font-medium text-gray-900 mt-0.5">{user.name}</div>
+              <div className="text-xs text-gray-500 mt-0.5 font-mono">{user.id}</div>
             </div>
-            <Edit className="h-5 w-5 text-muted-foreground" />
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <Label>Institute Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>Plan</Label>
-              <Select value={form.plan} onValueChange={(v) => setForm({ ...form, plan: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Starter">Starter</SelectItem>
-                  <SelectItem value="Premium">Premium</SelectItem>
-                  <SelectItem value="Enterprise">Enterprise</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="pt-2 border-t border-border/40">
-              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Institute Admin</div>
-            </div>
-            <div>
-              <Label>Admin Name</Label>
-              <Input value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>Admin Email</Label>
-              <Input type="email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>New Password (optional)</Label>
-              <Input
-                type="text"
-                value={form.adminPassword}
-                onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-                placeholder="Leave blank to keep current"
-                className="mt-1 font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">If set, the admin must use this password to log in.</p>
-            </div>
-          </div>
-
-          <div className="flex gap-2 mt-5">
-            <Button size="sm" className="bg-primary hover:bg-primary/90 text-white flex-1" disabled={saving} onClick={save}>
-              {saving ? 'Saving…' : 'Save Changes'}
-            </Button>
-            <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
-          </div>
-        </Card>
-      </motion.div>
-    </motion.div>
+          )}
+          <Field label="Full Name" required>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={inputCls}
+              placeholder="Full name"
+            />
+          </Field>
+          <Field label="Email" hint="Leave blank to keep the existing email.">
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputCls}
+              placeholder="name@concordia.edu.pk"
+              type="email"
+            />
+          </Field>
+          <Field
+            label="New Password"
+            hint="Leave blank to keep the current password. Resetting forces a password change on next login."
+          >
+            <Input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={inputCls}
+              placeholder="Enter new password"
+              type="text"
+            />
+          </Field>
+          <button
+            onClick={save}
+            disabled={saving}
+            className={cn(btnPrimary, 'w-full justify-center h-10')}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" />
+            )}
+            Save Changes
+          </button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-// ---------- Provision Institute modal (scrollable, shows actual password) ----------
-function ProvisionInstituteModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({
-    name: '', city: '', country: 'USA', plan: 'Premium',
-    adminName: '', adminEmail: '', adminPassword: '',
-  });
-  const [creating, setCreating] = useState(false);
-  const [lastCreated, setLastCreated] = useState<any>(null);
+// ═══════════════════════════════════════════════════════════════
+// SuperStaff — manage admin / admissions / accountant / academic
+// ═══════════════════════════════════════════════════════════════
 
-  const create = async () => {
-    if (!form.name || !form.adminEmail || !form.adminPassword) {
-      toast({ title: 'Institute name, admin email and password are required', variant: 'destructive' });
-      return;
-    }
-    setCreating(true);
+function SuperStaff() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [search, setSearch] = useState('');
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(false);
+    Promise.all(STAFF_ROLES.map((r) => api.platformUsers({ role: r }).catch(() => [])))
+      .then((results) => {
+        const all = results.flat();
+        setUsers(all);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  const toggleBlock = async (u: any) => {
+    setActingId(u.id);
     try {
-      const res = await api.createInstitute(form);
-      toast({ title: 'Institute provisioned!', description: `${res.institute.name} — admin login created` });
-      setLastCreated(res);
-      setForm({ name: '', city: '', country: 'USA', plan: 'Premium', adminName: '', adminEmail: '', adminPassword: '' });
-      onSaved();
+      await api.blockUser(u.id, !u.blocked);
+      toast({
+        title: u.blocked ? 'Account unblocked' : 'Account blocked',
+        description: u.blocked
+          ? `${u.name} can now sign in again.`
+          : `${u.name} has been signed out and blocked.`,
+      });
+      load();
     } catch (e: any) {
-      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
+      toast({
+        title: 'Failed to update account',
+        description: e?.message,
+        variant: 'destructive',
+      });
     } finally {
-      setCreating(false);
+      setActingId(null);
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] grid place-items-start sm:place-items-center p-4 bg-black/50 overflow-y-auto"
-      onClick={() => { if (!creating) onClose(); }}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg my-8"
-      >
-        <Card className="p-6 max-h-[90vh] overflow-y-auto scroll-fancy">
-          {lastCreated ? (
-            <>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="h-12 w-12 rounded-full bg-accent0/15 grid place-items-center">
-                  <CheckCircle2 className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">Institute provisioned!</h3>
-                  <p className="text-sm text-muted-foreground">{lastCreated.institute.name} is ready</p>
-                </div>
-              </div>
-              <div className="rounded-xl bg-accent0/5 border border-[oklch(0.5_0.04_260)_/_0.2] p-4 space-y-2 text-sm">
-                <div className="font-semibold text-primary dark:text-primary/70">Institute Admin login credentials</div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Email</span>
-                  <span className="font-mono text-xs sm:text-sm break-all text-right">{lastCreated.adminLogin?.email}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Password</span>
-                  <span className="font-mono text-xs sm:text-sm break-all text-right text-primary dark:text-primary/70">
-                    {lastCreated.adminLogin?.password}
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground pt-2 border-t border-[oklch(0.5_0.04_260)_/_0.2]">
-                  Share these credentials securely. The admin can change their password after logging in.
-                </div>
-              </div>
-              <div className="flex gap-2 mt-5">
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white flex-1" onClick={onClose}>Done</Button>
-                <Button size="sm" variant="outline" onClick={() => setLastCreated(null)}>Add Another</Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-bold text-lg">Provision a new institute</h3>
-                <Plus className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <p className="text-sm text-muted-foreground mb-5">
-                You will set the Institute Admin's email and password. They can change it after first login.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <Label>Institute name *</Label>
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Dallas Modern School" className="mt-1" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>City</Label>
-                    <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Dallas" className="mt-1" />
-                  </div>
-                  <div>
-                    <Label>Country</Label>
-                    <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="mt-1" />
-                  </div>
-                </div>
-                <div>
-                  <Label>Plan</Label>
-                  <Select value={form.plan} onValueChange={(v) => setForm({ ...form, plan: v })}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Starter">Starter — 1 branch, basic modules</SelectItem>
-                      <SelectItem value="Premium">Premium — multi-branch, all modules</SelectItem>
-                      <SelectItem value="Enterprise">Enterprise — unlimited, white-label</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="pt-2 border-t border-border/40">
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Institute Admin — You set the credentials
-                  </div>
-                </div>
-                <div>
-                  <Label>Admin name</Label>
-                  <Input value={form.adminName} onChange={(e) => setForm({ ...form, adminName: e.target.value })} placeholder="Dr. Jane Doe" className="mt-1" />
-                </div>
-                <div>
-                  <Label>Admin email *</Label>
-                  <Input type="email" value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} placeholder="admin@school.edu" className="mt-1" />
-                </div>
-                <div>
-                  <Label>Assign password *</Label>
-                  <Input
-                    type="text"
-                    value={form.adminPassword}
-                    onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-                    placeholder="Set a password for the admin"
-                    className="mt-1 font-mono"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">This is the actual password the admin will use to log in.</p>
-                </div>
-              </div>
-              <div className="flex gap-2 mt-5">
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white flex-1" disabled={creating} onClick={create}>
-                  {creating ? 'Provisioning…' : 'Provision Institute'}
-                </Button>
-                <Button size="sm" variant="outline" disabled={creating} onClick={onClose}>Cancel</Button>
-              </div>
-            </>
-          )}
-        </Card>
-      </motion.div>
-    </motion.div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Office Staff"
+        subtitle="Manage administrator, admission, accountant, and academic office accounts."
+      />
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="All Office Staff"
+          desc="Edit profiles, reset passwords, or block access."
+          action={
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                className={cn(inputCls, 'pl-9 w-64')}
+              />
+            </div>
+          }
+        />
+
+        {loading ? (
+          <SkeletonTable rows={5} />
+        ) : error ? (
+          <ErrorState />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={UserCog}
+            title={search ? 'No matching staff' : 'No office staff yet'}
+            desc={
+              search
+                ? 'Try a different search term.'
+                : 'Office staff accounts will appear here once created.'
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Role
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Status
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((u) => (
+                  <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                      {u.name}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-600">
+                      {u.email || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <RoleBadge role={u.role} />
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <StatusBadge status={u.status} blocked={u.blocked} />
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditing(u)}
+                          className={cn(btnSecondary, 'h-8 px-3 text-xs')}
+                          title="Edit account"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleBlock(u)}
+                          disabled={actingId === u.id}
+                          className={cn(
+                            'h-8 px-3 text-xs rounded-lg border transition-colors inline-flex items-center gap-1.5 font-medium disabled:opacity-60',
+                            u.blocked
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
+                          )}
+                          title={u.blocked ? 'Unblock account' : 'Block account'}
+                        >
+                          {actingId === u.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : u.blocked ? (
+                            <Unlock className="h-3.5 w-3.5" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5" />
+                          )}
+                          {u.blocked ? 'Unblock' : 'Block'}
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <EditUserSheet
+        user={editing}
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        onSaved={load}
+      />
+    </div>
   );
 }
 
-// ---------- Announcements view (super admin only sees their own) ----------
-function AnnouncementsView({ user, institutes, institutesLoading }: { user: any; institutes: any[]; institutesLoading: boolean }) {
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ title: '', message: '', targetScope: 'all', selectedInstitutes: [] as string[] });
-  const [sending, setSending] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+// ═══════════════════════════════════════════════════════════════
+// SuperTeachers — view all teachers, block/unblock, reset password
+// ═══════════════════════════════════════════════════════════════
 
-  const refresh = () => {
-    api.getAnnouncements()
-      .then((a) => setAnnouncements(Array.isArray(a) ? a : []))
-      .catch(() => {})
+function SuperTeachers() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [search, setSearch] = useState('');
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(false);
+    api
+      .platformUsers({ role: 'teacher' })
+      .then((d) => setUsers(Array.isArray(d) ? d : []))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { refresh(); }, []);
 
-  const send = async () => {
-    if (!form.title || !form.message) {
-      toast({ title: 'Title and message required', variant: 'destructive' });
-      return;
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.rollNo || '').toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  const toggleBlock = async (u: any) => {
+    setActingId(u.id);
+    try {
+      await api.blockUser(u.id, !u.blocked);
+      toast({
+        title: u.blocked ? 'Teacher unblocked' : 'Teacher blocked',
+        description: u.blocked
+          ? `${u.name} can sign in again.`
+          : `${u.name} has been signed out and blocked.`,
+      });
+      load();
+    } catch (e: any) {
+      toast({
+        title: 'Failed to update account',
+        description: e?.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setActingId(null);
     }
-    if (form.targetScope === 'specific' && form.selectedInstitutes.length === 0) {
-      toast({ title: 'Select at least one institute', variant: 'destructive' });
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Teachers"
+        subtitle="View all teacher accounts, reset passwords, or block access."
+      />
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title={`${users.length} Teacher${users.length === 1 ? '' : 's'}`}
+          desc="Faculty members across all branches."
+          action={
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search teachers…"
+                className={cn(inputCls, 'pl-9 w-64')}
+              />
+            </div>
+          }
+        />
+
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : error ? (
+          <ErrorState />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title={search ? 'No matching teachers' : 'No teachers yet'}
+            desc={
+              search
+                ? 'Try a different search term.'
+                : 'Teachers are created by the Academic Office.'
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Roll No
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Status
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((u) => (
+                  <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                      {u.name}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-600">
+                      {u.email || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-500 font-mono">
+                      {u.rollNo || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <StatusBadge status={u.status} blocked={u.blocked} />
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditing(u)}
+                          className={cn(btnSecondary, 'h-8 px-3 text-xs')}
+                          title="Edit / reset password"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Reset
+                        </button>
+                        <button
+                          onClick={() => toggleBlock(u)}
+                          disabled={actingId === u.id}
+                          className={cn(
+                            'h-8 px-3 text-xs rounded-lg border transition-colors inline-flex items-center gap-1.5 font-medium disabled:opacity-60',
+                            u.blocked
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
+                          )}
+                          title={u.blocked ? 'Unblock account' : 'Block account'}
+                        >
+                          {actingId === u.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : u.blocked ? (
+                            <Unlock className="h-3.5 w-3.5" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5" />
+                          )}
+                          {u.blocked ? 'Unblock' : 'Block'}
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <EditUserSheet
+        user={editing}
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        onSaved={load}
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SuperStudents — view all students, block/unblock, reset password
+// ═══════════════════════════════════════════════════════════════
+
+function SuperStudents() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [search, setSearch] = useState('');
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(false);
+    api
+      .platformUsers({ role: 'student' })
+      .then((d) => setUsers(Array.isArray(d) ? d : []))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.rollNo || '').toLowerCase().includes(q) ||
+        (u.class || '').toLowerCase().includes(q),
+    );
+  }, [users, search]);
+
+  const toggleBlock = async (u: any) => {
+    setActingId(u.id);
+    try {
+      await api.blockUser(u.id, !u.blocked);
+      toast({
+        title: u.blocked ? 'Student unblocked' : 'Student blocked',
+        description: u.blocked
+          ? `${u.name} can sign in again.`
+          : `${u.name} has been signed out and blocked.`,
+      });
+      load();
+    } catch (e: any) {
+      toast({
+        title: 'Failed to update account',
+        description: e?.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Students"
+        subtitle="View all student accounts, reset passwords, or block access."
+      />
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title={`${users.length} Student${users.length === 1 ? '' : 's'}`}
+          desc="Enrolled students across all branches and classes."
+          action={
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, roll no, class…"
+                className={cn(inputCls, 'pl-9 w-72')}
+              />
+            </div>
+          }
+        />
+
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : error ? (
+          <ErrorState />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={GraduationCap}
+            title={search ? 'No matching students' : 'No students yet'}
+            desc={
+              search
+                ? 'Try a different search term.'
+                : 'Students are enrolled by the Admission Office.'
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Name
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Roll No
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Class
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Status
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((u) => (
+                  <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                      {u.name}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-600">
+                      {u.email || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-500 font-mono">
+                      {u.rollNo || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-700">
+                      {u.class ? `${u.class}${u.section ? `-${u.section}` : ''}` : '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <StatusBadge status={u.status} blocked={u.blocked} />
+                    </TableCell>
+                    <TableCell className="py-3 px-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditing(u)}
+                          className={cn(btnSecondary, 'h-8 px-3 text-xs')}
+                          title="Edit / reset password"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Reset
+                        </button>
+                        <button
+                          onClick={() => toggleBlock(u)}
+                          disabled={actingId === u.id}
+                          className={cn(
+                            'h-8 px-3 text-xs rounded-lg border transition-colors inline-flex items-center gap-1.5 font-medium disabled:opacity-60',
+                            u.blocked
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100',
+                          )}
+                          title={u.blocked ? 'Unblock account' : 'Block account'}
+                        >
+                          {actingId === u.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : u.blocked ? (
+                            <Unlock className="h-3.5 w-3.5" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5" />
+                          )}
+                          {u.blocked ? 'Unblock' : 'Block'}
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <EditUserSheet
+        user={editing}
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        onSaved={load}
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SuperAnnouncements — broadcast college-wide + view history
+// ═══════════════════════════════════════════════════════════════
+
+function SuperAnnouncements({ user }: { user: any }) {
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [targetRole, setTargetRole] = useState<string>('all');
+  const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    setError(false);
+    api
+      .getAnnouncements()
+      .then((d) => setAnnouncements(Array.isArray(d) ? d : []))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const broadcast = async () => {
+    if (!title.trim() || !message.trim()) {
+      toast({ title: 'Title and message are required', variant: 'destructive' });
       return;
     }
     setSending(true);
     try {
-      await api.createAnnouncement({
-        title: form.title,
-        message: form.message,
-        targetRole: 'institute-admin',
-        targetScope: form.targetScope,
-        targetIds: form.targetScope === 'specific' ? form.selectedInstitutes : undefined,
-      });
+      const body: any = {
+        title: title.trim(),
+        message: message.trim(),
+        targetScope: 'all',
+      };
+      if (targetRole !== 'all') body.targetRole = targetRole;
+      await api.createAnnouncement(body);
       toast({
-        title: 'Announcement sent!',
-        description: form.targetScope === 'all' ? 'Sent to all institutes' : `Sent to ${form.selectedInstitutes.length} institute(s)`,
+        title: 'Announcement broadcast',
+        description:
+          targetRole === 'all'
+            ? 'Sent college-wide to all roles.'
+            : `Sent to ${ROLE_LABELS[targetRole] || targetRole} accounts.`,
       });
-      setForm({ title: '', message: '', targetScope: 'all', selectedInstitutes: [] });
-      setShowForm(false);
-      refresh();
+      setTitle('');
+      setMessage('');
+      setTargetRole('all');
+      load();
     } catch (e: any) {
-      toast({ title: 'Failed', description: e.message, variant: 'destructive' });
+      toast({
+        title: 'Failed to broadcast',
+        description: e?.message,
+        variant: 'destructive',
+      });
     } finally {
       setSending(false);
     }
   };
 
+  const remove = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await api.deleteAnnouncement(id);
+      toast({ title: 'Announcement deleted' });
+      load();
+    } catch (e: any) {
+      toast({
+        title: 'Failed to delete',
+        description: e?.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <ModuleHeader
+      <PageHeader
         title="Announcements"
-        subtitle="Send messages to Institute Admins — only your announcements are shown here"
-        actions={
-          <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowForm((v) => !v)}>
-            <Megaphone className="h-4 w-4 mr-1.5" /> New Announcement
-          </Button>
-        }
+        subtitle="Broadcast notices to the whole college or specific roles."
       />
 
-      {showForm && (
-        <Card className="p-5">
-          <h3 className="font-bold text-base mb-4">New Announcement</h3>
-          <div className="space-y-3">
-            <div>
-              <Label>Title</Label>
-              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Platform maintenance scheduled" className="mt-1" />
-            </div>
-            <div>
-              <Label>Message</Label>
-              <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={3} placeholder="Type your announcement…" className="mt-1 resize-none" />
-            </div>
-            <div>
-              <Label>Recipients</Label>
-              <Select value={form.targetScope} onValueChange={(v) => setForm({ ...form, targetScope: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* ── Compose ── */}
+        <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader
+            title="New Broadcast"
+            desc={`Posted as ${user?.name?.split(' ')[0] || 'Product Owner'} · visible college-wide.`}
+          />
+          <div className="space-y-4">
+            <Field label="Title" required>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className={inputCls}
+                placeholder="e.g. Eid Holidays Notice"
+              />
+            </Field>
+            <Field label="Message" required>
+              <Textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className={cn(inputCls, 'min-h-[120px] resize-y')}
+                placeholder="Write the announcement message…"
+              />
+            </Field>
+            <Field label="Audience" hint="Choose who should see this announcement.">
+              <Select value={targetRole} onValueChange={setTargetRole}>
+                <SelectTrigger className={inputCls}>
+                  <SelectValue placeholder="Select audience" />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Institute Admins</SelectItem>
-                  <SelectItem value="specific">Specific Institutes</SelectItem>
+                  <SelectItem value="all">Everyone (college-wide)</SelectItem>
+                  <SelectItem value="admin">Office Staff only</SelectItem>
+                  <SelectItem value="teacher">Teachers only</SelectItem>
+                  <SelectItem value="student">Students only</SelectItem>
+                  <SelectItem value="parent">Parents only</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            {form.targetScope === 'specific' && (
-              <div>
-                <Label>Select Institutes</Label>
-                {institutesLoading ? (
-                  <LoadingState label="Loading institutes…" className="py-4 border border-border/60 rounded-lg" />
-                ) : (
-                  <div className="mt-2 max-h-48 overflow-y-auto scroll-fancy space-y-1.5 border border-border/60 rounded-lg p-3">
-                    {institutes.map((inst) => (
-                      <label key={inst.id} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-accent">
-                        <input
-                          type="checkbox"
-                          checked={form.selectedInstitutes.includes(inst.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setForm({ ...form, selectedInstitutes: [...form.selectedInstitutes, inst.id] });
-                            else setForm({ ...form, selectedInstitutes: form.selectedInstitutes.filter((id) => id !== inst.id) });
-                          }}
-                          className="custom-checkbox w-4 h-4 rounded"
-                        />
-                        <span className="text-sm">{inst.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" disabled={sending} onClick={send}>
-              {sending ? 'Sending…' : (<><Send className="h-4 w-4 mr-1.5" /> Send Announcement</>)}
-            </Button>
+            </Field>
+            <button
+              onClick={broadcast}
+              disabled={sending}
+              className={cn(btnPrimary, 'w-full justify-center h-10')}
+            >
+              {sending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Broadcast Announcement
+            </button>
           </div>
-        </Card>
-      )}
+        </div>
+
+        {/* ── History ── */}
+        <div className="lg:col-span-3 rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader
+            title="Broadcast History"
+            desc="Your previously sent announcements."
+            action={
+              <span className="text-[11px] text-gray-400">
+                {announcements.length} total
+              </span>
+            }
+          />
+          {loading ? (
+            <div className="space-y-2.5">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-20" />
+              ))}
+            </div>
+          ) : error ? (
+            <ErrorState />
+          ) : announcements.length === 0 ? (
+            <EmptyState
+              icon={Megaphone}
+              title="No announcements yet"
+              desc="Use the form on the left to broadcast your first college-wide notice."
+            />
+          ) : (
+            <ul className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
+              {announcements.map((a) => (
+                <li
+                  key={a.id}
+                  className="rounded-lg border border-gray-200 p-3.5 hover:border-gray-300 transition group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-gray-900 truncate">
+                          {a.title}
+                        </span>
+                        {a.targetRole ? (
+                          <span className="text-[10px] uppercase tracking-wider text-gray-500 border border-gray-200 rounded px-1.5 py-0.5">
+                            {ROLE_LABELS[a.targetRole] || a.targetRole}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] uppercase tracking-wider text-[#F26522] border border-[#F26522]/20 bg-[#F26522]/5 rounded px-1.5 py-0.5">
+                            College-wide
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1.5 line-clamp-3">
+                        {a.message}
+                      </p>
+                      <div className="text-[11px] text-gray-400 mt-2 flex items-center gap-2">
+                        <span>{fmtDateTime(a.createdAt)}</span>
+                        <span>·</span>
+                        <span>{relativeTime(a.createdAt)}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => remove(a.id)}
+                      disabled={deletingId === a.id}
+                      className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
+                      title="Delete announcement"
+                    >
+                      {deletingId === a.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SuperFees — fee collection stats + recent revenue entries
+// ═══════════════════════════════════════════════════════════════
+
+function SuperFees() {
+  const [overview, setOverview] = useState<any>(null);
+  const [finance, setFinance] = useState<any>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.platformOverview().catch(() => null),
+      api.getPlatformFinance().catch(() => null),
+      api.getAllInvoices().catch(() => []),
+    ])
+      .then(([o, f, inv]) => {
+        if (cancelled) return;
+        setOverview(o);
+        setFinance(f);
+        setInvoices(Array.isArray(inv) ? inv : []);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const kpi = finance?.kpi;
+  const revenueEntries: any[] = finance?.revenueEntries || [];
+  const recentTxns: any[] = finance?.recentTransactions || [];
+  const paidInvoices = invoices.filter((i) => i.status === 'Paid');
+  const unpaidInvoices = invoices.filter((i) => i.status !== 'Paid');
+  const totalCollected = paidInvoices.reduce((s, i) => s + (i.paidAmount || i.amount || 0), 0);
+  const totalOutstanding = unpaidInvoices.reduce((s, i) => s + (i.amount || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Fee Collection"
+        subtitle="College-wide fee revenue and recent financial activity."
+      />
 
       {loading ? (
-        <Card className="p-5"><LoadingState label="Loading announcements…" /></Card>
-      ) : announcements.length === 0 ? (
-        <EmptyState
-          icon={Megaphone}
-          title="No announcements yet"
-          desc="Send messages to all or specific Institute Admins."
-          action={
-            <Button className="bg-primary hover:bg-primary/90 text-white" onClick={() => setShowForm(true)}>
-              <Megaphone className="h-4 w-4 mr-1.5" /> New Announcement
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-3">
-          {announcements.map((a) => (
-            <Card key={a.id} className="p-4">
-              <div className="flex items-start justify-between mb-2 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Megaphone className="h-4 w-4 text-primary shrink-0" />
-                  <div className="font-medium text-sm truncate">{a.title}</div>
-                </div>
-                <span className="text-[11px] text-muted-foreground shrink-0">{a.createdAt ? new Date(a.createdAt).toLocaleString() : ''}</span>
-              </div>
-              <p className="text-sm text-muted-foreground ml-6 whitespace-pre-wrap">{a.message}</p>
-              <div className="text-[11px] text-muted-foreground mt-2 ml-6">
-                To: {a.targetScope === 'all' ? 'All Institute Admins' : 'Specific Institutes'}
-              </div>
-            </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-28" />
           ))}
         </div>
+      ) : error ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <ErrorState />
+        </div>
+      ) : (
+        <>
+          {/* KPI strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              icon={DollarSign}
+              label="Total Collected"
+              value={fmtMoney(totalCollected || overview?.totalRevenue || kpi?.totalRevenue || 0)}
+              sub={`${paidInvoices.length} paid invoices`}
+            />
+            <StatCard
+              icon={AlertCircle}
+              label="Outstanding"
+              value={fmtMoney(totalOutstanding || 0)}
+              sub={`${unpaidInvoices.length} unpaid invoices`}
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Manual Revenue"
+              value={fmtMoney(kpi?.totalRevenue ?? 0)}
+              sub={`${revenueEntries.length} entries logged`}
+            />
+            <StatCard
+              icon={Award}
+              label="Salary Disbursed"
+              value={fmtMoney(kpi?.totalSalaryPaid ?? 0)}
+              sub="Total teacher salaries paid"
+            />
+          </div>
+
+          {/* Recent transactions */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <SectionHeader
+              title="Recent Transactions"
+              desc="Latest revenue entries logged by the Product Owner."
+              action={
+                <span className="text-[11px] text-gray-400">
+                  {recentTxns.length} shown
+                </span>
+              }
+            />
+            {recentTxns.length === 0 ? (
+              <EmptyState
+                icon={DollarSign}
+                title="No transactions yet"
+                desc="Revenue entries will appear here once logged via the platform analytics."
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-gray-200 hover:bg-transparent">
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Date
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Source
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Period
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                        Amount
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentTxns.map((t, i) => (
+                      <TableRow key={t.id || i} className="border-gray-100 hover:bg-gray-50">
+                        <TableCell className="py-3 px-3 text-sm text-gray-500">
+                          {fmtDate(t.date)}
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                          {t.party || '—'}
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm text-gray-600">
+                          {t.method || '—'}
+                        </TableCell>
+                        <TableCell className="py-3 px-3">
+                          <StatusBadge status={t.status} />
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm font-semibold text-gray-900 text-right">
+                          {fmtMoney(t.amount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* All College Fee Invoices */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <SectionHeader
+              title="All Fee Invoices"
+              desc="Every fee invoice issued across the college."
+              action={
+                <span className="text-[11px] text-gray-400">
+                  {invoices.length} total · {paidInvoices.length} paid · {unpaidInvoices.length} unpaid
+                </span>
+              }
+            />
+            {invoices.length === 0 ? (
+              <EmptyState
+                icon={DollarSign}
+                title="No fee invoices yet"
+                desc="Invoices will appear here once the Accountant office generates them."
+              />
+            ) : (
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-gray-200 hover:bg-transparent sticky top-0 bg-white">
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Student
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Class
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Period
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Type
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                        Amount
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invoices.slice(0, 100).map((inv, i) => (
+                      <TableRow key={inv.id || i} className="border-gray-100 hover:bg-gray-50">
+                        <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                          {inv.studentName || '—'}
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm text-gray-600">
+                          {inv.className || '—'}
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm text-gray-500">
+                          {inv.month ? `${inv.month} ${inv.year}` : String(inv.year || '—')}
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm text-gray-600">
+                          {inv.type || 'Tuition'}
+                        </TableCell>
+                        <TableCell className="py-3 px-3">
+                          <StatusBadge status={inv.status || 'Unpaid'} />
+                        </TableCell>
+                        <TableCell className="py-3 px-3 text-sm font-semibold text-gray-900 text-right">
+                          {fmtMoney(inv.paidAmount || inv.amount || 0)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-// ---------- Platform Config (display-only) ----------
-function PlatformConfig({ overview, loading }: { overview: any; loading: boolean }) {
-  const settings = [
-    { icon: Building2, label: 'Platform Name', value: 'Concordia College', desc: 'Shown across the platform UI' },
-    { icon: ShieldCheck, label: 'Default Plan for New Institutes', value: 'Premium', desc: 'Pre-selected when provisioning' },
-    { icon: Mail, label: 'Support Email', value: 'faisalkhan00297@gmail.com', desc: 'For all support requests' },
-    { icon: Building, label: 'Max Institutes Allowed', value: loading ? '…' : (overview?.institutes ? `${overview.institutes} active` : 'Unlimited'), desc: 'Current platform cap' },
-  ];
+// ═══════════════════════════════════════════════════════════════
+// SuperAttendance — all attendance records across classes (latest 50)
+// ═══════════════════════════════════════════════════════════════
+
+function SuperAttendance() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // Initial state of `loading=true` + `error=false` covers the first render.
+  // On refresh we use stale-while-revalidate (keep old data visible while fetching).
+  const load = () => {
+    api
+      .getAttendance({})
+      .then((d) => {
+        // API may return an array of records (with nested `records` JSON) or
+        // an object with `entries`. Normalize to a flat array.
+        const list = Array.isArray(d) ? d : (d?.entries ?? []);
+        setRecords(list);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  // Flatten each attendance session's per-student records into rows.
+  const rows = useMemo(() => {
+    const out: any[] = [];
+    for (const rec of records) {
+      const inner = rec.records;
+      const list = typeof inner === 'string' ? safeParse(inner) : Array.isArray(inner) ? inner : [];
+      for (const e of list) {
+        out.push({
+          id: `${rec.id}-${e.studentId}`,
+          date: rec.date,
+          classId: rec.classId,
+          studentId: e.studentId,
+          status: e.status,
+        });
+      }
+    }
+    return out;
+  }, [records]);
+
+  const counts = useMemo(() => {
+    const present = rows.filter((r) => r.status === 'present').length;
+    const absent = rows.filter((r) => r.status === 'absent').length;
+    const late = rows.filter((r) => r.status === 'late').length;
+    return { present, absent, late, total: rows.length };
+  }, [rows]);
 
   return (
     <div className="space-y-6">
-      <ModuleHeader title="Platform Configuration" subtitle="Display-only platform settings — edit backend config to change values" />
-      <div className="grid sm:grid-cols-2 gap-4">
-        {settings.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className="p-2.5 sm:p-3 hover:shadow-md transition border border-border rounded-lg shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 grid place-items-center shrink-0">
-                  <s.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
-                  <div className="font-bold text-base break-all mt-0.5">{s.value}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{s.desc}</div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        ))}
+      <PageHeader
+        title="Attendance"
+        subtitle="Latest attendance records across all classes (most recent 50 sessions)."
+      />
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard icon={CheckCircle2} label="Total Entries" value={counts.total} sub="From latest sessions" />
+        <StatCard icon={CheckCircle2} label="Present" value={counts.present} sub="Marked present" />
+        <StatCard icon={AlertCircle} label="Absent" value={counts.absent} sub="Marked absent" />
+        <StatCard icon={Award} label="Late" value={counts.late} sub="Arrived late" />
       </div>
-      <Card className="p-5 border-dashed">
-        <div className="flex items-start gap-3">
-          <Settings className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-          <div>
-            <div className="font-medium text-sm">Display-only mode</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              These settings are read from the backend configuration. To change platform name, default plan, support email, or institute caps,
-              update the backend config file. This page reflects the live values for visibility.
-            </p>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="Attendance Log"
+          desc="Per-student entries from the latest sessions."
+          action={<span className="text-[11px] text-gray-400">{rows.length} rows</span>}
+        />
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : error ? (
+          <ErrorState />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={CheckCircle2}
+            title="No attendance recorded yet"
+            desc="Teachers mark attendance from their portal — entries will appear here."
+          />
+        ) : (
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-white">
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Date
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Class ID
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Student ID
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Status
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-600">
+                      {fmtDate(r.date)}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-500 font-mono">
+                      {r.classId || '—'}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-500 font-mono">
+                      {r.studentId || '—'}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3">
+                      <AttendanceStatusBadge status={r.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        </div>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }
 
-// ---------- Branding page (display-only) ----------
-function BrandingPage() {
+function AttendanceStatusBadge({ status }: { status: string }) {
+  const s = (status || '').toLowerCase();
+  const cls =
+    s === 'present'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+      : s === 'absent'
+        ? 'bg-rose-50 text-rose-700 border-rose-100'
+        : s === 'late'
+          ? 'bg-amber-50 text-amber-700 border-amber-100'
+          : 'bg-gray-100 text-gray-600 border-gray-200';
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium capitalize',
+        cls,
+      )}
+    >
+      {status || '—'}
+    </span>
+  );
+}
+
+function safeParse(s: string): any[] {
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SuperResults — all test results across classes (latest 50)
+// ═══════════════════════════════════════════════════════════════
+
+function SuperResults() {
+  const [records, setRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // Initial state of `loading=true` + `error=false` covers the first render.
+  // On refresh we use stale-while-revalidate (keep old data visible while fetching).
+  const load = () => {
+    api
+      .getResults({})
+      .then((d) => {
+        const list = Array.isArray(d) ? d : (d?.entries ?? []);
+        setRecords(list);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  // Flatten per-student result entries
+  const rows = useMemo(() => {
+    const out: any[] = [];
+    for (const rec of records) {
+      const inner = rec.records;
+      const list = typeof inner === 'string' ? safeParse(inner) : Array.isArray(inner) ? inner : [];
+      for (const e of list) {
+        out.push({
+          id: `${rec.id}-${e.studentId}`,
+          date: rec.date,
+          exam: rec.exam,
+          courseId: rec.courseId,
+          totalMarks: rec.totalMarks,
+          studentId: e.studentId,
+          marks: e.marks,
+          grade: e.grade,
+        });
+      }
+    }
+    return out;
+  }, [records]);
+
   return (
     <div className="space-y-6">
-      <ModuleHeader title="Branding" subtitle="Platform visual identity" />
-      <Card className="p-0 overflow-hidden">
-        <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/80 p-8 sm:p-10 text-white">
-          <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-[oklch(0.5_0.04_260)_/_0.15] blur-3xl" />
-          <div className="relative">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] mb-3 border border-white/15">
-              <ShieldCheck className="h-3 w-3 text-primary/70" /> Platform Identity
-            </div>
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight">Concordia College</h2>
-            <p className="text-white/90 text-base sm:text-lg mt-1">College Management Portal</p>
-            <p className="text-white/70 text-sm mt-3 max-w-md">
-              Modern school management for institutions worldwide — by Cyber Advance Solutions.
-            </p>
-          </div>
-        </div>
-      </Card>
+      <PageHeader
+        title="Results"
+        subtitle="Latest test results across all classes (most recent 50 sessions)."
+      />
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Palette className="h-4 w-4 text-primary" />
-            <h3 className="font-bold text-sm">Color Theme</h3>
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="Results Log"
+          desc="Per-student marks from the latest test sessions."
+          action={<span className="text-[11px] text-gray-400">{rows.length} entries</span>}
+        />
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : error ? (
+          <ErrorState />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={Award}
+            title="No results recorded yet"
+            desc="Teachers submit test results from their portal — entries will appear here."
+          />
+        ) : (
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-white">
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Date
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Exam
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Course
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Student
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                    Marks
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
+                    Grade
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-600">
+                      {fmtDate(r.date)}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm font-medium text-gray-900">
+                      {r.exam || '—'}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-500 font-mono">
+                      {r.courseId || '—'}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm text-gray-500 font-mono">
+                      {r.studentId || '—'}
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3 text-sm text-right text-gray-900 font-medium">
+                      {r.marks ?? '—'}
+                      <span className="text-gray-400">/{r.totalMarks ?? '?'}</span>
+                    </TableCell>
+                    <TableCell className="py-2.5 px-3">
+                      <GradeBadge grade={r.grade} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-          <div className="space-y-2.5">
-            <ColorRow name="Primary (Orange)" hex="#F26522" className="bg-[#F26522]" />
-            <ColorRow name="Accent (Orange)" hex="#FF8C42" className="bg-[#FF8C42]" />
-            <ColorRow name="Highlight (Sky)" hex="#0284c7" className="bg-sky-600" />
-            <ColorRow name="Neutral (Slate)" hex="#475569" className="bg-slate-600" />
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Building2 className="h-4 w-4 text-primary" />
-            <h3 className="font-bold text-sm">Brand Information</h3>
-          </div>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Platform Name</span><span className="font-medium">Concordia College</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Tagline</span><span className="font-medium text-right">College Management Portal</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Provider</span><span className="font-medium text-right">Cyber Advance Solutions</span></div>
-            <div className="flex justify-between gap-3"><span className="text-muted-foreground">Theme Mode</span><span className="font-medium">Light / Dark</span></div>
-          </div>
-        </Card>
+        )}
       </div>
-
-      <Card className="p-5 border-dashed">
-        <div className="flex items-start gap-3">
-          <Settings className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-          <div>
-            <div className="font-medium text-sm">Display-only</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Branding assets (logo, tagline, color palette) are defined in the platform theme configuration. Update the theme tokens to change the look.
-            </p>
-          </div>
-        </div>
-      </Card>
     </div>
   );
 }
 
-function ColorRow({ name, hex, className }: { name: string; hex: string; className: string }) {
+function GradeBadge({ grade }: { grade?: string }) {
+  if (!grade) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+  const g = grade.toUpperCase();
+  const cls =
+    g.startsWith('A')
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+      : g.startsWith('B')
+        ? 'bg-sky-50 text-sky-700 border-sky-100'
+        : g.startsWith('C')
+          ? 'bg-gray-100 text-gray-700 border-gray-200'
+          : g.startsWith('D')
+            ? 'bg-amber-50 text-amber-700 border-amber-100'
+            : g === 'F'
+              ? 'bg-rose-50 text-rose-700 border-rose-100'
+              : 'bg-gray-100 text-gray-600 border-gray-200';
   return (
-    <div className="flex items-center gap-3">
-      <div className={`h-7 w-7 rounded-md ${className} ring-1 ring-black/10`} />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium">{name}</div>
-        <div className="text-[11px] text-muted-foreground font-mono">{hex}</div>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+        cls,
+      )}
+    >
+      {grade}
+    </span>
+  );
+}
+
+// ───────────────────────── Coming Soon ─────────────────────────
+
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="h-12 w-12 rounded-xl bg-[#FFF0E8] grid place-items-center mb-4">
+        <Inbox className="h-6 w-6 text-[#F26522]" />
       </div>
+      <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+      <p className="text-sm text-gray-500 mt-1 max-w-sm">
+        This module is being prepared. Check back soon.
+      </p>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SuperAdminPortal — main router
+//
+// `settings` is intentionally NOT rendered here — the parent
+// role-portal.tsx intercepts it and renders the shared SettingsPage
+// (change own password) for every role.
+// ═══════════════════════════════════════════════════════════════
+
+export function SuperAdminPortal({ activeModule, user }: Props) {
+  const setActiveModule = useApp((s) => s.setActiveModule);
+
+  // Settings is handled by the parent RolePortal — return null here.
+  if (activeModule === 'settings') return null;
+
+  let content: React.ReactNode;
+  switch (activeModule) {
+    case 'super-dashboard':
+    case 'platform-overview': // legacy fallback
+      content = <SuperAdminDashboard user={user} setActiveModule={setActiveModule} />;
+      break;
+    case 'super-branches':
+      content = <SuperBranches />;
+      break;
+    case 'super-staff':
+      content = <SuperStaff />;
+      break;
+    case 'super-teachers':
+      content = <SuperTeachers />;
+      break;
+    case 'super-students':
+      content = <SuperStudents />;
+      break;
+    case 'super-announcements':
+      content = <SuperAnnouncements user={user} />;
+      break;
+    case 'super-fees':
+      content = <SuperFees />;
+      break;
+    case 'super-attendance':
+      content = <SuperAttendance />;
+      break;
+    case 'super-results':
+      content = <SuperResults />;
+      break;
+    default:
+      content = <ComingSoon title="Module" />;
+  }
+
+  return <div className="animate-in fade-in-0 duration-200">{content}</div>;
 }

@@ -1666,3 +1666,75 @@ Stage Summary:
 - Parent portal (spec §6.2): consolidated into StudentPortal, banner shows ✅
 - Admin/Admissions/Accountant/Academic portals: no dummy data, proper empty states ✅
 - Ready for GitHub push + Vercel deploy.
+
+---
+Task ID: 6-super-admin-redesign
+Agent: full-stack-developer
+Task: Completely redesign the Super Admin portal for the new single-institution Concordia College model. The super admin (Faisal Khan — faisu57727@gmail.com) is now the PRODUCT OWNER overseeing the whole college, not a multi-tenant SaaS provisioner.
+
+Work Log:
+- Read worklog.md + agent-ctx handovers for tasks 3 (teacher portal) and 4 (student portal) to lock in the established design system: orange #F26522 used ONLY for primary buttons / active row states / the `h-0.5 w-8 bg-[#F26522] mb-3` section accent line / focus rings; NO gradients / glassmorphism / colored icon tiles / framer-motion; white cards on `border-gray-200 rounded-xl` with `hover:shadow-sm`; uppercase muted table headers with `hover:bg-gray-50` row tint.
+- Read the existing super-admin-portal.tsx (1604 lines) — it was built for the old multi-tenant SaaS model: ProvisionInstituteModal, PlatformAnalytics with recharts, PlatformConfig, BrandingPage, InstitutesManager. All of that is irrelevant to the new single-institution Concordia model and was removed.
+- Read /home/z/my-project/src/lib/server/auth.ts to confirm super-admin role permissions:
+  * ROLE_EQUIVALENCE does NOT include super-admin (super-admin has no equivalent legacy roles)
+  * requireRole(user, ...roles) returns authorized if user.role or any ROLE_EQUIVALENCE[user.role] is in the allowed list
+  * Super-admin is explicitly allowed on: GET /api/institutes, GET /api/branches, GET /api/platform/overview, GET /api/platform/finance, POST /api/platform/users
+- Read /home/z/my-project/src/lib/server/handler.ts around the PATCH /api/platform/users/:id endpoint (lines 366-390):
+  * Line 367 calls `requireAuth(req)` — NOT `requireRole`. So any authenticated user can PATCH.
+  * Lines 373-374 enforce branch/institute scoping ONLY for `branch-manager` and `institute-admin` roles specifically. Super-admin bypasses these checks (its role doesn't match either condition), so it can edit ANY user across the whole system.
+  * PATCH body accepts `{name, email, password, blocked, classId, addCourseIds}`. When `password` is set, the handler also flips `mustChangePassword = 1` (line 378) — perfect for the "reset password" UX.
+  * CONCLUSION: No handler.ts change needed for PATCH permission. Super-admin can already edit/block/reset-password for any user.
+- Confirmed the GET endpoints the super-admin portal uses are all accessible:
+  * GET /api/platform/overview (line 932) — requireRole(super-admin) — returns {institutes, branches, totalStudents, totalStaff, totalRevenue, activeInstitutes}
+  * GET /api/platform/users (line 300) — no role check, super-admin sees all users (filter `role != 'super-admin'` excludes the super-admin itself)
+  * GET /api/announcements (line 820) — super-admin filter is `senderRole = 'super-admin'` (line 825-827) → super-admin only sees their OWN broadcasts (NOT all college announcements). Noted as API gap.
+  * GET /api/attendance (line 1495) — no role filter, returns latest 50 sessions across all classes
+  * GET /api/results (line 1540) — no role filter, returns latest 50 results across all classes
+  * GET /api/branches (line 224) — requireRole(super-admin, institute-admin, branch-manager) — super-admin sees all branches
+  * GET /api/classes (line 418) — no role check, filter by branchId
+  * GET /api/courses (line 427) — no role check, filter by classId
+  * GET /api/platform/finance (line 1284) — requireRole(super-admin) — returns KPIs + monthly/yearly revenue + recent transactions from manual_revenue table
+  * GET /api/fee-invoices (line 1592) — returns invoices for `studentId || user.id` only → super-admin sees only their own (empty) invoices. Noted as API gap. Worked around by using platformOverview.totalRevenue (from `fees` table aggregated) + platformFinance (manual_revenue) for the Fee Collection module.
+- Updated /home/z/my-project/src/lib/role-modules.ts:
+  * Added `CheckCircle2` to the lucide-react imports (for the Attendance sidebar icon)
+  * Replaced the old 3-group super-admin sidebar (Platform / System / Account with platform-overview, institutes, platform-analytics, announcements, config, branding, settings) with the new 4-group structure:
+    - Main (flat): super-dashboard (LayoutDashboard)
+    - College (dropdown): super-branches (Building2), super-staff (UserCog), super-teachers (Users), super-students (GraduationCap)
+    - Oversight (dropdown): super-announcements (Megaphone), super-fees (DollarSign), super-attendance (CheckCircle2), super-results (Award)
+    - Account (flat): settings (Settings)
+  * Kept the legacy `institute-admin` and `branch-manager` sidebar entries unchanged (backward compat).
+- Completely rewrote /home/z/my-project/src/components/portal/super-admin-portal.tsx (2341 lines, was 1604):
+  * File structure: header comment block → imports → shared constants (STAFF_ROLES, ROLE_LABELS, SCROLLBAR_CLS, inputCls, btnPrimary, btnSecondary, fmtMoney, fmtDate, fmtDateTime, relativeTime) → shared UI helpers (PageHeader with orange accent line, StatCard, SectionHeader, Skeleton, SkeletonTable, EmptyState, ErrorState, StatusBadge, RoleBadge, Field) → 9 module components → ComingSoon fallback → SuperAdminPortal router.
+  * SuperAdminDashboard: "Welcome back, {firstName}" + "Product Owner" subtitle (Crown icon badge), 6 StatCards (Students / Teachers / Office Staff / Branches / Fee Collected / Announcements) — all clickable to jump to the relevant module, 2-column layout (recent announcements with role badges + at-a-glance list), recent accounts table, 6 quick-action cards.
+  * SuperBranches: collapsible branch list (auto-expands first branch), each branch expands to show its classes, each class expands to show assigned courses. Lazy-loads classes/courses on first expand.
+  * SuperStaff: table of all office staff (admin/admissions/accountant/academic) — fetched via Promise.all of 4 role-filtered platformUsers calls. Columns: Name, Email, Role, Status, Actions (Edit button → EditUserSheet, Block/Unblock button with toast feedback). Search by name/email.
+  * SuperTeachers: table of all teachers with search (name/email/rollNo). Columns: Name, Email, Roll No, Status, Actions (Reset → EditUserSheet, Block/Unblock).
+  * SuperStudents: table of all students with search (name/email/rollNo/class). Columns: Name, Email, Roll No, Class, Status, Actions (Reset → EditUserSheet, Block/Unblock).
+  * EditUserSheet (shared): Sheet with name/email/new-password fields. On save, PATCHes /api/platform/users/:id with `{name, email, password}` (only fields that changed). Password reset sets mustChangePassword=1 server-side (handler.ts line 378). Toast confirms.
+  * SuperAnnouncements: 2-column layout — compose form (title/message/audience select: Everyone/Office Staff/Teachers/Students/Parents) on the left, broadcast history list on the right with delete buttons. Uses api.createAnnouncement({title, message, targetScope: 'all', targetRole?}) and api.deleteAnnouncement(id).
+  * SuperFees: 4 StatCards (Total Fees Collected from platformOverview.totalRevenue / Manual Revenue / Salary Disbursed / Net Balance from platformFinance.kpi) + recent transactions table (from platformFinance.recentTransactions).
+  * SuperAttendance: 4 StatCards (Total Entries / Present / Absent / Late) + attendance log table. Flattens each session's nested `records` JSON into per-student rows. Handles both array and `{entries: [...]}` API response shapes. Sticky table header inside max-h-[600px] scroll area.
+  * SuperResults: results log table with per-student marks + grade badges. Flattens nested records JSON. Sticky header. GradeBadge uses muted tones (emerald for A, slate for B/C, amber for D, rose for F).
+  * SuperAdminPortal router: switch on activeModule. Returns null for 'settings' (handled by parent role-portal.tsx). Falls back to ComingSoon for unknown modules.
+- Lint fixes:
+  * First lint run flagged 3 errors: (1) `loadClassesForBranch` accessed before declaration in SuperBranches useEffect, (2)(3) `setLoading(true)` called synchronously inside useEffect in SuperAttendance and SuperResults (react-hooks/set-state-in-effect rule).
+  * Fixed (1) by hoisting loadClassesForBranch/loadCoursesForClass above the useEffect and refactoring them to read state via the setClassesByBranch/setCoursesByClass updater callback (avoids stale closure on `classesByBranch`/`coursesByClass`).
+  * Fixed (2)(3) by removing the synchronous `setLoading(true)` + `setError(false)` calls from inside the `load()` functions for SuperAttendance and SuperResults — initial state of `loading=true` + `error=false` already covers the first render, and on refresh we use stale-while-revalidate (keep showing old data while fetching). The same pattern in SuperStaff/SuperTeachers/SuperStudents/SuperAnnouncements was NOT flagged by the lint rule (inconsistent heuristic), so left as-is.
+  * Removed unused `Button` import (used plain `<button>` elements with className instead).
+  * Removed unused `LayoutDashboard` and `Settings as SettingsIcon` imports.
+  * Final lint: 0 errors, 0 warnings.
+- Dev server: compiles clean. Multiple `✓ Compiled in 158-774ms` entries in dev.log after the rewrite, no runtime errors. The `GET /api/fee-invoices?studentId=[object%20Object]` line in the log is from the EXISTING admin-portal.tsx (line 218 `api.getFeeInvoices({})` passes `{}` as studentId) — pre-existing bug, NOT in scope for this task.
+- Did NOT modify handler.ts: the PATCH /api/platform/users/:id endpoint already works for super-admin (no requireRole check; branch/institute scoping only fires for branch-manager/institute-admin roles).
+
+Stage Summary:
+- Super Admin portal (Product Owner role): completely redesigned with 9 modules matching the teacher/student/admin/academic portal design language ✅
+- New sidebar: Main (Dashboard) / College (Branches & Classes, Office Staff, Teachers, Students) / Oversight (Announcements, Fee Collection, Attendance, Results) / Account (Settings) ✅
+- All data is fetched live from the API — NO dummy/fake data anywhere. Proper skeleton loaders, empty states, and error states on every module ✅
+- Office Staff module: edit profiles, reset passwords (sets mustChangePassword=1), block/unblock — all via PATCH /api/platform/users/:id (already works for super-admin, no handler change needed) ✅
+- Teachers + Students modules: search + block/unblock + reset password via the shared EditUserSheet ✅
+- Announcements module: broadcast college-wide or to specific roles, with delete ✅
+- Fee Collection: aggregated KPIs from platformOverview + platformFinance (manual_revenue) ✅
+- Attendance + Results: latest 50 sessions across all classes, flattened to per-student rows ✅
+- Lint: 0 errors, 0 warnings ✅
+- Dev server: compiles clean, no runtime errors ✅
+- API gaps noted for future backend work: (1) super-admin can only see their OWN announcements via GET /api/announcements (filter is `senderRole = 'super-admin'`) — to show ALL college announcements the handler line 825-827 would need to drop the senderRole filter for super-admin; (2) GET /api/fee-invoices returns invoices for the current user only (`sid = studentId || user.id`) — super-admin can't see individual fee invoices, only the aggregated `totalRevenue` from platformOverview. Both gaps are worked around in the UI and documented in the handover doc.

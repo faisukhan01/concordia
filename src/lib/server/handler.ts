@@ -823,9 +823,8 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       let args: any[] = [];
 
       if (user.role === 'super-admin') {
-        sql += ' AND senderRole = ?';
-        args = ['super-admin'];
-      } else if (user.role === 'institute-admin') {
+        // Product owner sees ALL college announcements (no filter)
+      } else if (user.role === 'institute-admin' || user.role === 'admin') {
         sql += ' AND ((senderRole = ? AND (targetScope = ? OR instituteId = ?)) OR senderId = ?)';
         args = ['super-admin', 'all', user.instituteId, user.id];
       } else if (user.role === 'branch-manager') {
@@ -1591,7 +1590,20 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
     // ===================== FEE INVOICES =====================
     if (method === 'GET' && path === 'fee-invoices') {
       const user = await requireAuth(req);
-      const { studentId } = query;
+      const { studentId, branchId, all } = query;
+      // Super-admin can pull ALL college invoices with ?all=1
+      if (user.role === 'super-admin' && all === '1') {
+        const r = await db.execute({ sql: 'SELECT * FROM fee_invoices ORDER BY year DESC, createdAt DESC LIMIT 500' });
+        return NextResponse.json(r.rows);
+      }
+      // Branch-scoped roles see their branch's invoices
+      if (['branch-manager', 'institute-admin', 'admin', 'academic', 'accountant', 'admissions'].includes(user.role) && !studentId) {
+        const brId = branchId || user.branchId;
+        if (brId) {
+          const r = await db.execute({ sql: 'SELECT * FROM fee_invoices WHERE branchId = ? ORDER BY year DESC, createdAt DESC', args: [brId] });
+          return NextResponse.json(r.rows);
+        }
+      }
       const sid = studentId || user.id;
       const r = await db.execute({ sql: 'SELECT * FROM fee_invoices WHERE studentId = ? ORDER BY year DESC, createdAt DESC', args: [sid] });
       return NextResponse.json(r.rows);

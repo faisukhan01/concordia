@@ -19,7 +19,7 @@ import {
   CalendarCheck, GraduationCap, BookOpen, MessageSquare, Trophy,
   ClipboardList, FileText, Bell, CreditCard, Calendar, Award,
   UserPlus, UserCog, Receipt, CalendarDays, Megaphone, BookMarked, KeyRound,
-  MessageCircle, FileSpreadsheet, Inbox,
+  MessageCircle, FileSpreadsheet, Inbox, CheckCircle2,
 } from 'lucide-react';
 
 export type RoleModule = {
@@ -47,18 +47,39 @@ const PRIMARY = 'from-primary to-primary/80';
 const SECONDARY = 'from-primary/80 to-primary';
 
 export const ROLE_MODULES: RoleModules = {
+  // ═══════════════════════════════════════════════════════════════
+  // Super Admin — PRODUCT OWNER for the Concordia College platform.
+  //
+  // The single-institution model replaces the old multi-tenant SaaS
+  // provisioning UI. The super admin now monitors the WHOLE college:
+  //   • Dashboard       — college-wide stats + recent activity
+  //   • Branches & Classes — view all branches/classes/courses
+  //   • Office Staff    — manage admin/admissions/accountant/academic
+  //   • Teachers        — view all teachers, block/unblock, reset pwd
+  //   • Students        — view all students, block/unblock, reset pwd
+  //   • Announcements   — broadcast college-wide + view history
+  //   • Fee Collection  — fee stats + recent invoices
+  //   • Attendance      — all attendance records across classes
+  //   • Results         — all test results across classes
+  //   • Settings        — change own password (handled by role-portal.tsx)
+  // ═══════════════════════════════════════════════════════════════
   'super-admin': [
-    { group: 'Platform', items: [
-      { id: 'platform-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
-      { id: 'institutes', name: 'Institutes', icon: Building2, color: PRIMARY },
-      { id: 'platform-analytics', name: 'Analytics', icon: TrendingUp, color: PRIMARY },
-      { id: 'announcements', name: 'Announcements', icon: MessageSquare, color: SECONDARY },
+    { group: 'Main', flat: true, items: [
+      { id: 'super-dashboard', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
     ]},
-    { group: 'System', items: [
-      { id: 'config', name: 'Platform Config', icon: Settings, color: SECONDARY },
-      { id: 'branding', name: 'Branding', icon: ShieldCheck, color: SECONDARY },
+    { group: 'College', items: [
+      { id: 'super-branches', name: 'Branches & Classes', icon: Building2, color: PRIMARY },
+      { id: 'super-staff', name: 'Office Staff', icon: UserCog, color: PRIMARY },
+      { id: 'super-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
+      { id: 'super-students', name: 'Students', icon: GraduationCap, color: PRIMARY },
     ]},
-    { group: 'Account', items: [
+    { group: 'Oversight', items: [
+      { id: 'super-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+      { id: 'super-fees', name: 'Fee Collection', icon: DollarSign, color: SECONDARY },
+      { id: 'super-attendance', name: 'Attendance', icon: CheckCircle2, color: SECONDARY },
+      { id: 'super-results', name: 'Results', icon: Award, color: SECONDARY },
+    ]},
+    { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
     ]},
   ],

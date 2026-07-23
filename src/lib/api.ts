@@ -293,6 +293,7 @@ export const api = {
   setFeeStructure: (classId: string, monthlyFee: number, admissionFee?: number) =>
     request<any>('fee-structure', { method: 'POST', body: JSON.stringify({ classId, monthlyFee, admissionFee }) }),
   getFeeInvoices: (studentId?: string) => request<any[]>(studentId ? `fee-invoices?studentId=${studentId}` : 'fee-invoices'),
+  getAllInvoices: () => request<any[]>('fee-invoices?all=1'),
   getBranchInvoices: () => cachedGet<any[]>('fee-invoices/branch'),
   generateInvoices: (month: string, year: number) =>
     request<any>('fee-invoices/generate', { method: 'POST', body: JSON.stringify({ month, year }) }),
