@@ -1993,7 +1993,9 @@ function FeeInstallmentsView({
                     </div>
                   </div>
                   <p className="text-[11px] text-emerald-700 mt-2.5">
-                    The student should change this password on first login.
+                    The student signs in at the portal with their{' '}
+                    <span className="font-semibold">Roll Number</span> and this{' '}
+                    <span className="font-semibold">password</span> — then changes it on first login.
                   </p>
                 </div>
               )}
@@ -3175,7 +3177,7 @@ function LoginsView({
                           <div className="flex items-center gap-3 flex-wrap">
                             <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
                               <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
-                                Username
+                                Username (Roll #)
                               </span>
                               <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
                                 {creds.rollNo}

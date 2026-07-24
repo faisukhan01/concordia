@@ -69,7 +69,11 @@ export function LoginPage() {
       } else if (msg.includes('locked') || msg.includes('Too many') || msg.includes('429')) {
         toast({ title: 'Account Temporarily Locked', description: msg, variant: 'destructive' });
       } else if (msg.includes('Invalid') || msg.includes('401') || msg.includes('incorrect')) {
-        toast({ title: 'Login failed', description: 'Invalid username or password. Please try again.', variant: 'destructive' });
+        toast({
+          title: 'Login failed',
+          description: 'Invalid username or password. Students & Teachers: use your Roll # / Teacher ID and the password given by the Accountant (not “concordia123”).',
+          variant: 'destructive',
+        });
       } else if (msg.includes('blocked') || msg.includes('Blocked') || msg.includes('retired')) {
         toast({ title: 'Access Blocked', description: msg, variant: 'destructive' });
       } else {
