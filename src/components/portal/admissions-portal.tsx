@@ -89,7 +89,13 @@ import {
   Download,
   Eye,
   Phone,
+  Printer,
 } from 'lucide-react';
+import {
+  buildAdmissionReceipt,
+  savePdf,
+  printPdf,
+} from '@/lib/pdf-utils';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -732,7 +738,7 @@ function NewEnrollmentView({
         });
         toast({
           title: 'Please complete academic placement',
-          description: 'Program, class, and roll number are required.',
+          description: 'Program, department, and roll number are required.',
           variant: 'destructive',
         });
         return false;
@@ -871,6 +877,66 @@ function NewEnrollmentView({
     setCnicWarning(null);
   };
 
+  // === Branded PDF receipt — download or print ===
+  const [receiptBusy, setReceiptBusy] = useState<'download' | 'print' | null>(null);
+
+  const buildReceiptDoc = async () => {
+    return buildAdmissionReceipt({
+      instituteName: user?.instituteName,
+      branchName: user?.branchName,
+      docTitle: 'Enrollment Receipt',
+      docSubtitle: 'Admission Office',
+      refLabel: 'Receipt No.',
+      refValue: created.rollNo,
+      studentName: created.name,
+      rollNo: created.rollNo,
+      program: created.program,
+      className: created.class || '',
+      section: created.section,
+      baseFee: created.baseFee,
+      baseFeeLocked: created.baseFeeLocked,
+      guardian: created.guardian,
+      guardianPhone: created.guardianPhone,
+      cnic: created.cnic,
+      dob: created.dob,
+      address: created.address,
+      enrolledAt: created.createdAt,
+    });
+  };
+
+  const handleDownloadReceipt = async () => {
+    setReceiptBusy('download');
+    try {
+      const doc = await buildReceiptDoc();
+      savePdf(doc, `Enrollment-${created.rollNo}.pdf`);
+      toast({ title: 'Receipt downloaded', description: `Enrollment-${created.rollNo}.pdf` });
+    } catch (e: any) {
+      toast({
+        title: 'Could not generate PDF',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setReceiptBusy(null);
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    setReceiptBusy('print');
+    try {
+      const doc = await buildReceiptDoc();
+      printPdf(doc);
+    } catch (e: any) {
+      toast({
+        title: 'Could not open print dialog',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setReceiptBusy(null);
+    }
+  };
+
   // === Confirmation screen (with print support) ===
   if (created) {
     return (
@@ -913,7 +979,7 @@ function NewEnrollmentView({
           <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left text-sm space-y-2">
             <Row label="Roll Number" value={created.rollNo} mono />
             <Row
-              label="Class"
+              label="Department"
               value={`${created.class || '—'}${created.section ? ' · ' + created.section : ''}`}
             />
             <Row
@@ -935,16 +1001,40 @@ function NewEnrollmentView({
               password after the first fee payment.
             </p>
           </div>
-          <div className="flex gap-2 mt-6 no-print">
+          <div className="flex flex-col gap-2 mt-6 no-print">
+            <p className="text-xs text-gray-500 text-left">
+              Save a copy of this enrollment receipt — choose download or print.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium flex-1"
+                onClick={handleDownloadReceipt}
+                disabled={receiptBusy !== null}
+              >
+                {receiptBusy === 'download' ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-1.5" />
+                )}
+                Download PDF
+              </Button>
+              <Button
+                variant="outline"
+                className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium flex-1"
+                onClick={handlePrintReceipt}
+                disabled={receiptBusy !== null}
+              >
+                {receiptBusy === 'print' ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4 mr-1.5" />
+                )}
+                Print Receipt
+              </Button>
+            </div>
             <Button
-              variant="outline"
-              className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium flex-1"
-              onClick={() => window.print()}
-            >
-              Print Receipt
-            </Button>
-            <Button
-              className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium flex-1"
+              className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium w-full mt-1"
               onClick={reset}
             >
               <Plus className="h-4 w-4 mr-1.5" /> Enroll Another
@@ -1187,7 +1277,7 @@ function NewEnrollmentView({
           <div className="mb-5">
             <h2 className="text-sm font-semibold text-gray-900">Academic Placement</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Program, class section, and roll number.
+              Program, department, and roll number.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1212,7 +1302,7 @@ function NewEnrollmentView({
               </Select>
               {err('program', 'Program')}
             </Field>
-            <Field label="Class" required>
+            <Field label="Department" required>
               <Select
                 value={form.classId}
                 onValueChange={(v) => {
@@ -1223,12 +1313,12 @@ function NewEnrollmentView({
                 }}
               >
                 <SelectTrigger className={`${inputCls} w-full`}>
-                  <SelectValue placeholder="Select class" />
+                  <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
                   {classes.length === 0 && (
                     <div className="px-3 py-2 text-xs text-gray-500">
-                      No classes in this branch.
+                      No departments in this branch.
                     </div>
                   )}
                   {classes.map((c) => (
@@ -1239,7 +1329,7 @@ function NewEnrollmentView({
                   ))}
                 </SelectContent>
               </Select>
-              {err('classId', 'Class')}
+              {err('classId', 'Department')}
             </Field>
             <Field label="Section">
               <Select value={form.section} onValueChange={(v) => set('section', v)}>
@@ -1264,13 +1354,13 @@ function NewEnrollmentView({
                   value={form.rollNo}
                   onChange={(e) => set('rollNo', e.target.value)}
                   onBlur={() => markTouched('rollNo')}
-                  placeholder="Auto-suggested from class"
+                  placeholder="Auto-suggested from department"
                   className={`${inputCls} pl-9 font-mono text-sm`}
                 />
               </div>
               {err('rollNo', 'Roll number')}
               <p className="text-[11px] text-gray-500 mt-1">
-                Auto-suggested from this class — edit if needed.
+                Auto-suggested from this department — edit if needed.
               </p>
             </Field>
           </div>

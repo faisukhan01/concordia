@@ -91,7 +91,7 @@ import {
   ChevronRight,
   Wallet,
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
+import { buildFeeChallan, savePdf } from '@/lib/pdf-utils';
 
 type Props = { activeModule: string; user: any };
 
@@ -1390,7 +1390,7 @@ function FeeInstallmentsView({
     }
   };
 
-  // ── Download a challan as PDF (jsPDF) ──
+  // ── Download a challan as PDF (branded, with logo) ──
   const downloadChallanPdf = async (inv: any) => {
     setDownloadingId(inv.id);
     try {
@@ -1400,149 +1400,28 @@ function FeeInstallmentsView({
         const full = await api.getChallanData(inv.id);
         data = { ...inv, ...full };
       } catch {}
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      const W = doc.internal.pageSize.getWidth();
-      const M = 40;
-      let y = 50;
-
-      // Top accent bar
-      doc.setFillColor(242, 101, 34); // #F26522
-      doc.rect(0, 0, W, 6, 'F');
-
-      // Header
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(17, 24, 39);
-      doc.text(data.instituteName || user?.instituteName || 'Concordia College', M, y);
-      y += 18;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128);
-      doc.text(data.branchName || user?.branchName || 'Main Campus', M, y);
-      doc.text('Fee Challan', M, y + 14);
-
-      // Challan # + status (right)
-      doc.setFontSize(9);
-      doc.setTextColor(107, 114, 128);
-      doc.text('Challan #', W - M, y, { align: 'right' });
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(17, 24, 39);
-      doc.text(data.challanNo || String(data.id || '').slice(0, 12), W - M, y + 14, { align: 'right' });
-
-      y += 38;
-      doc.setDrawColor(229, 231, 235);
-      doc.line(M, y, W - M, y);
-      y += 22;
-
-      // Student info grid (2 cols)
-      const colW = (W - 2 * M) / 2;
-      const infoRows: [string, string][] = [
-        ['Student', data.studentName || selected?.name || '—'],
-        ['Class', `${data.className || data.class || selected?.class || '—'}${data.section || selected?.section ? ' \u00b7 ' + (data.section || selected?.section) : ''}`],
-        ['Roll #', data.rollNo || selected?.rollNo || '—'],
-        ['Period', data.dueDate
-          ? `Due ${formatDate(data.dueDate)}`
-          : `${data.month ? monthName(data.month) : '—'}${data.year ? ' ' + data.year : ''}`],
-        ['Type', data.type || 'Tuition'],
-        ['Status', (data.status || 'Unpaid')],
-      ];
-      doc.setFontSize(9);
-      infoRows.forEach((r, i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = M + col * colW;
-        const ry = y + row * 32;
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(156, 163, 175);
-        doc.text(r[0].toUpperCase(), x, ry);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(17, 24, 39);
-        doc.text(r[1], x, ry + 14);
+      const doc = await buildFeeChallan({
+        instituteName: data.instituteName || user?.instituteName,
+        branchName: data.branchName || user?.branchName,
+        docTitle: 'Fee Challan',
+        docSubtitle: 'Accountant Office',
+        refLabel: 'Challan #',
+        refValue: data.challanNo || String(data.id || '').slice(0, 12),
+        studentName: data.studentName || selected?.name || '—',
+        rollNo: data.rollNo || selected?.rollNo || '—',
+        className: data.className || data.class || selected?.class || '',
+        section: data.section || selected?.section,
+        challanNo: data.challanNo || String(data.id || '').slice(0, 12),
+        amount: data.amount,
+        type: data.type || 'Tuition',
+        status: data.status || 'Unpaid',
+        dueDate: data.dueDate,
+        month: data.month,
+        year: data.year,
+        paidDate: data.paidDate || data.paidAt,
       });
-      y += 32 * 3 + 6;
-
-      // Fee breakdown table
-      doc.setDrawColor(229, 231, 235);
-      doc.setFillColor(249, 250, 251);
-      doc.rect(M, y, W - 2 * M, 24, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(107, 114, 128);
-      doc.text('DESCRIPTION', M + 10, y + 16);
-      doc.text('AMOUNT (Rs)', W - M - 10, y + 16, { align: 'right' });
-      y += 24;
-
-      const desc = data.type === 'Installment'
-        ? `Installment — Due ${formatDate(data.dueDate)}`
-        : `${data.type || 'Tuition'} Fee — ${data.month ? monthName(data.month) : ''} ${data.year || ''}`;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(17, 24, 39);
-      doc.text(desc, M + 10, y + 16);
-      doc.text(Number(data.amount || 0).toLocaleString('en-PK'), W - M - 10, y + 16, { align: 'right' });
-      y += 30;
-
-      // Total
-      doc.setDrawColor(229, 231, 235);
-      doc.line(M, y, W - M, y);
-      y += 8;
-      doc.setFillColor(249, 250, 251);
-      doc.rect(M, y, W - 2 * M, 28, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.setTextColor(17, 24, 39);
-      doc.text('TOTAL PAYABLE', M + 10, y + 18);
-      doc.text(`Rs ${Number(data.amount || 0).toLocaleString('en-PK')}`, W - M - 10, y + 18, { align: 'right' });
-      y += 44;
-
-      // Payment status box
-      const statusLower = (data.status || '').toLowerCase();
-      if (statusLower === 'paid') {
-        doc.setDrawColor(167, 243, 208);
-        doc.setFillColor(236, 253, 245);
-        doc.rect(M, y, W - 2 * M, 32, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(4, 120, 87);
-        doc.text('PAID', M + 12, y + 20);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(4, 120, 87);
-        if (data.paidDate || data.paidAt) {
-          doc.text(`Paid on ${formatDate(data.paidDate || data.paidAt)}`, W - M - 12, y + 20, { align: 'right' });
-        }
-      } else {
-        doc.setDrawColor(254, 215, 170);
-        doc.setFillColor(255, 247, 237);
-        doc.rect(M, y, W - 2 * M, 32, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(194, 120, 3);
-        doc.text('UNPAID', M + 12, y + 20);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(194, 120, 3);
-        if (data.dueDate) {
-          doc.text(`Due ${formatDate(data.dueDate)}`, W - M - 12, y + 20, { align: 'right' });
-        }
-      }
-
-      // Footer
-      const fy = doc.internal.pageSize.getHeight() - 50;
-      doc.setDrawColor(229, 231, 235);
-      doc.line(M, fy, W - M, fy);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(156, 163, 175);
-      doc.text(
-        'This is a computer-generated challan and does not require a physical signature.',
-        M,
-        fy + 16,
-      );
-      doc.text(`Generated on ${formatDate(new Date().toISOString())}`, W - M, fy + 16, { align: 'right' });
-
       const fileName = `Challan-${data.challanNo || data.id}.pdf`;
-      doc.save(fileName);
+      savePdf(doc, fileName);
       toast({ title: 'Challan downloaded', description: fileName });
     } catch (e: any) {
       toast({
