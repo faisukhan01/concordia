@@ -424,6 +424,29 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       return NextResponse.json(r.rows);
     }
 
+    // Create a new class (Academic Office / Admin / branch-manager / institute-admin)
+    if (method === 'POST' && path === 'classes') {
+      const user = await requireAuth(req);
+      requireRole(user, 'branch-manager', 'institute-admin');
+      const { name, section, branchId } = body || {};
+      if (!name || !name.trim()) return NextResponse.json({ error: 'Class name is required' }, { status: 400 });
+      const brId = branchId || user.branchId;
+      if (!brId) return NextResponse.json({ error: 'Branch ID is required' }, { status: 400 });
+      const sec = (section || 'A').trim().toUpperCase() || 'A';
+      // Prevent exact duplicates (same name + same section in same branch)
+      const existing = await db.execute({
+        sql: 'SELECT id FROM classes WHERE branchId = ? AND name = ? AND section = ?',
+        args: [brId, name.trim(), sec],
+      });
+      if (existing.rows.length > 0) return NextResponse.json({ error: 'A class with this name and section already exists' }, { status: 409 });
+      const id = nextId('CLS');
+      await db.execute({
+        sql: 'INSERT INTO classes (id, branchId, name, section) VALUES (?, ?, ?, ?)',
+        args: [id, brId, name.trim(), sec],
+      });
+      return NextResponse.json({ id, branchId: brId, name: name.trim(), section: sec }, { status: 201 });
+    }
+
     if (method === 'GET' && path === 'courses') {
       const user = await requireAuth(req);
       const { branchId, classId } = query;

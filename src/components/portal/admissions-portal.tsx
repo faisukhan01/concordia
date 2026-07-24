@@ -1485,7 +1485,12 @@ function EditStudentSheet({
 }
 
 // ---------------------------------------------------------------------------
-// 4. Base Fee Finalization
+// 4. Fee Records — unified table of all students + their base fee status.
+//    The actual fee LOCKING happens during New Enrollment. This page is a
+//    read-oriented registry: it shows every enrolled student with their
+//    class, program, base fee amount, and locked/pending status. Pending
+//    students can still be locked inline (for cases where it was skipped
+//    during enrollment).
 // ---------------------------------------------------------------------------
 function BaseFeeView({
   students,
@@ -1498,15 +1503,40 @@ function BaseFeeView({
   onRefresh: () => void;
   onLocalUpsert: (s: any) => void;
 }) {
-  const pending = useMemo(() => students.filter((s) => !isLocked(s)), [students]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
   const locked = useMemo(() => students.filter((s) => isLocked(s)), [students]);
+  const pending = useMemo(() => students.filter((s) => !isLocked(s)), [students]);
   const lockedTotal = locked.reduce((acc, s) => acc + Number(s.baseFee || 0), 0);
+
+  const filtered = useMemo(() => {
+    let list = students;
+    if (statusFilter === 'locked') list = list.filter(isLocked);
+    else if (statusFilter === 'pending') list = list.filter((s) => !isLocked(s));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((s) =>
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.rollNo || '').toLowerCase().includes(q) ||
+        (s.class || '').toLowerCase().includes(q) ||
+        (s.program || '').toLowerCase().includes(q)
+      );
+    }
+    // Locked first, then pending; alphabetically within each group
+    return [...list].sort((a, b) => {
+      const la = isLocked(a) ? 0 : 1;
+      const lb = isLocked(b) ? 0 : 1;
+      if (la !== lb) return la - lb;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [students, search, statusFilter]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Base Fee Finalization"
-        subtitle="Set and lock the one-time base fee for each enrolled student."
+        title="Fee Records"
+        subtitle="All enrolled students and their base fee status. Fees are locked during New Enrollment."
         actions={
           <Button
             variant="outline"
@@ -1519,50 +1549,52 @@ function BaseFeeView({
         }
       />
 
-      <BaseFeeCallout />
-
-      {/* Pending finalization */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Awaiting Finalization</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {pending.length} student(s) without a locked base fee
-            </p>
-          </div>
-        </div>
-        {loading ? (
-          <SkeletonTable rows={4} />
-        ) : pending.length === 0 ? (
-          <EmptyState
-            icon={CheckCircle2}
-            title="All base fees are locked"
-            desc="Every enrolled student has a finalized base fee."
-          />
-        ) : (
-          <div className="space-y-3">
-            {pending.map((s) => (
-              <PendingFeeRow key={s.id} student={s} onLock={onLocalUpsert} />
-            ))}
-          </div>
-        )}
+      {/* Summary stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon={GraduationCap} label="Total Students" value={String(students.length)} hint="All enrolled" />
+        <KpiCard icon={Lock} label="Fee Locked" value={String(locked.length)} hint="Finalized" />
+        <KpiCard icon={Clock} label="Pending" value={String(pending.length)} hint="Awaiting lock" />
+        <KpiCard icon={DollarSign} label="Total Locked" value={fmtMoney(lockedTotal)} hint="Sum of locked fees" />
       </div>
 
-      {/* Locked fees (read-only) */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">Locked Base Fees</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {locked.length} student(s) · Total {fmtMoney(lockedTotal)}
-            </p>
+      {/* Search + filter bar */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, roll #, class, or program…"
+              className={`${inputCls} pl-9`}
+            />
           </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className={`${inputCls} w-full sm:w-44`}>
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="locked">Locked only</SelectItem>
+              <SelectItem value="pending">Pending only</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        {locked.length === 0 ? (
+      </div>
+
+      {/* Unified records table */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : filtered.length === 0 ? (
           <EmptyState
-            icon={Lock}
-            title="No locked fees yet"
-            desc="Finalize a student above to see them here."
+            icon={DollarSign}
+            title={students.length === 0 ? 'No students enrolled yet' : 'No matching records'}
+            desc={
+              students.length === 0
+                ? 'Enroll students from the New Enrollment tab to see their fee records here.'
+                : 'Try adjusting your search or status filter.'
+            }
           />
         ) : (
           <div className="overflow-x-auto">
@@ -1578,6 +1610,9 @@ function BaseFeeView({
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
                     Class
                   </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Program
+                  </TableHead>
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
                     Base Fee
                   </TableHead>
@@ -1587,7 +1622,7 @@ function BaseFeeView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {locked.map((s) => (
+                {filtered.map((s) => (
                   <TableRow key={s.id} className="border-gray-100 hover:bg-gray-50">
                     <TableCell className="text-sm font-mono text-gray-700">
                       {s.rollNo || '—'}
@@ -1596,18 +1631,21 @@ function BaseFeeView({
                       {s.name}
                     </TableCell>
                     <TableCell className="text-sm text-gray-700">
-                      {s.class || '—'} {s.section ? `· ${s.section}` : ''}
+                      {s.class || '—'}
+                      {s.section ? <span className="text-gray-400"> · {s.section}</span> : null}
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-700">
+                      {s.program || '—'}
                     </TableCell>
                     <TableCell className="text-sm font-semibold text-gray-900 text-right">
-                      {fmtMoney(Number(s.baseFee))}
+                      {isLocked(s) ? fmtMoney(Number(s.baseFee)) : '—'}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        variant="outline"
-                        className="bg-emerald-50 text-emerald-700 border-transparent gap-1"
-                      >
-                        <Lock className="h-3 w-3" /> Locked
-                      </Badge>
+                      {isLocked(s) ? (
+                        <StatusBadge student={s} />
+                      ) : (
+                        <PendingFeeRow student={s} onLock={onLocalUpsert} compact />
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1623,9 +1661,11 @@ function BaseFeeView({
 function PendingFeeRow({
   student,
   onLock,
+  compact = false,
 }: {
   student: any;
   onLock: (s: any) => void;
+  compact?: boolean;
 }) {
   const [amount, setAmount] = useState('');
   const [locking, setLocking] = useState(false);
@@ -1657,6 +1697,39 @@ function PendingFeeRow({
       onLock({ ...student, ...patch });
     }
   };
+
+  // Compact mode: inline badge + small lock input for table rows
+  if (compact) {
+    return (
+      <div className="inline-flex items-center gap-1.5">
+        <Badge
+          variant="outline"
+          className="bg-amber-50 text-amber-700 border-transparent gap-1"
+        >
+          <Clock className="h-3 w-3" /> Pending
+        </Badge>
+        <div className="relative">
+          <DollarSign className="h-3 w-3 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+          <Input
+            type="number"
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Amount"
+            className="h-7 w-24 rounded-md border border-gray-200 bg-white text-xs pl-6 pr-1 text-gray-900 focus:border-[#F26522] focus:ring-1 focus:ring-[#F26522]/12"
+          />
+        </div>
+        <button
+          onClick={lock}
+          disabled={locking}
+          className="h-7 px-2 rounded-md bg-[#F26522] hover:bg-[#D4541E] text-white text-[11px] font-medium inline-flex items-center gap-1 disabled:opacity-60"
+        >
+          {locking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Lock className="h-3 w-3" />}
+          Lock
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-gray-300 transition-colors">

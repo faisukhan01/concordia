@@ -1202,11 +1202,154 @@ function ReportCardsView({ user }: { user: any }) {
   );
 }
 
-// ───────────────────────── Main router ─────────────────────────
+// ───────────────────────── Classes View ─────────────────────────
+function ClassesView({ user }: { user: any }) {
+  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const [section, setSection] = useState('A');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      api.getClasses(user?.branchId).catch(() => []),
+      api.platformUsers({ role: 'student', branchId: user?.branchId }).catch(() => []),
+    ]).then(([c, s]) => {
+      setClasses(Array.isArray(c) ? c : []);
+      setStudents(Array.isArray(s) ? s : []);
+    }).finally(() => setLoading(false));
+  }, [user?.branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const studentCount = (cls: any) =>
+    students.filter((s) => s.class === cls.name && s.section === cls.section).length;
+
+  const submit = async () => {
+    if (!name.trim()) { toast({ title: 'Class name is required', variant: 'destructive' }); return; }
+    setSaving(true);
+    try {
+      await api.createClass(name.trim(), section.trim() || 'A', user?.branchId);
+      toast({ title: 'Class created', description: `${name.trim()} — Section ${section.trim() || 'A'}` });
+      setName(''); setSection('A'); setShowForm(false);
+      load();
+    } catch (e: any) {
+      toast({ title: 'Failed to create class', description: e?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (cls: any) => {
+    if (!confirm(`Delete ${cls.name} — Section ${cls.section}? This cannot be undone.`)) return;
+    try {
+      await api.deleteClassSection(cls.id);
+      toast({ title: 'Class deleted' });
+      load();
+    } catch (e: any) {
+      toast({ title: 'Cannot delete', description: e?.message || 'This class may have students assigned.', variant: 'destructive' });
+    }
+  };
+
+  const totalSections = classes.length;
+  const uniqueNames = new Set(classes.map((c) => c.name)).size;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Classes"
+        subtitle="Create and manage class sections for this campus."
+        action={
+          <button onClick={() => setShowForm((s) => !s)} className={btnPrimary}>
+            <Plus className="h-4 w-4" /> {showForm ? 'Cancel' : 'Add Class'}
+          </button>
+        }
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard icon={BookOpen} label="Total Sections" value={totalSections} sub={`${uniqueNames} unique class name(s)`} />
+        <StatCard icon={GraduationCap} label="Total Students" value={students.length} sub="Across all classes" />
+        <StatCard icon={Users} label="Avg per Section" value={totalSections > 0 ? Math.round(students.length / totalSections) : 0} sub="Students per section" />
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader title="New Class" desc="Create a class section. Students will be assigned during enrollment." />
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_auto] gap-3 items-end">
+            <Field label="Class Name" required>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Grade 10, Class 9, Prep" />
+            </Field>
+            <Field label="Section">
+              <Input value={section} onChange={(e) => setSection(e.target.value)} className={inputCls} placeholder="A" maxLength={3} />
+            </Field>
+            <button onClick={submit} disabled={saving} className={btnPrimary + ' h-10'}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Create Class
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">Sections are auto-uppercased. Duplicate name+section combinations are rejected.</p>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader title="All Classes" desc={`${totalSections} section(s) in this campus`} />
+        {loading ? (
+          <SkeletonTable rows={4} />
+        ) : classes.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title="No classes yet"
+            desc="Create your first class section using the 'Add Class' button above. The Admission Office needs at least one class to enroll students."
+            action={
+              <button onClick={() => setShowForm(true)} className={btnPrimary}>
+                <Plus className="h-4 w-4" /> Create First Class
+              </button>
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Class Name</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Section</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-center">Students</TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {classes.map((c) => (
+                  <TableRow key={c.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="text-sm font-medium text-gray-900">{c.name}</TableCell>
+                    <TableCell className="text-sm text-gray-700">{c.section}</TableCell>
+                    <TableCell className="text-sm text-gray-700 text-center">{studentCount(c)}</TableCell>
+                    <TableCell className="text-right">
+                      <button
+                        onClick={() => del(c)}
+                        className="h-8 px-2 text-xs text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded inline-flex items-center gap-1"
+                      >
+                        <AlertCircle className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AcademicPortal({ activeModule, user }: Props) {
   switch (activeModule) {
     case 'academic-overview': return <AcademicOverview user={user} />;
     case 'academic-announcements': return <AnnouncementsView user={user} />;
+    case 'academic-classes': return <ClassesView user={user} />;
     case 'academic-teachers': return <TeachersView user={user} />;
     case 'academic-assign': return <AssignView user={user} />;
     case 'academic-students': return <StudentsView user={user} />;

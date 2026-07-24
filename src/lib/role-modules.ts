@@ -111,7 +111,7 @@ export const ROLE_MODULES: RoleModules = {
     { group: 'Admission Office', items: [
       { id: 'admissions:admissions-new', name: 'New Enrollment', icon: UserPlus, color: PRIMARY },
       { id: 'admissions:admissions-students', name: 'Student Records', icon: GraduationCap, color: PRIMARY },
-      { id: 'admissions:admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: SECONDARY },
+      { id: 'admissions:admissions-base-fee', name: 'Fee Records', icon: DollarSign, color: SECONDARY },
     ]},
     { group: 'Accountant', items: [
       { id: 'accountant:accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: PRIMARY },
@@ -123,6 +123,7 @@ export const ROLE_MODULES: RoleModules = {
     ]},
     { group: 'Academic Office', items: [
       { id: 'academic:academic-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+      { id: 'academic:academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'academic:academic-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
       { id: 'academic:academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: SECONDARY },
       { id: 'academic:academic-students', name: 'Students', icon: GraduationCap, color: SECONDARY },
@@ -147,7 +148,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'admissions-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
       { id: 'admissions-new', name: 'New Enrollment', icon: UserPlus, color: PRIMARY },
       { id: 'admissions-students', name: 'Student Records', icon: GraduationCap, color: PRIMARY },
-      { id: 'admissions-base-fee', name: 'Base Fee Finalization', icon: DollarSign, color: SECONDARY },
+      { id: 'admissions-base-fee', name: 'Fee Records', icon: DollarSign, color: SECONDARY },
     ]},
     { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
@@ -182,7 +183,8 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'academic-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
       { id: 'academic-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
     ]},
-    { group: 'Staff & Students', items: [
+    { group: 'Classes & Staff', items: [
+      { id: 'academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'academic-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
       { id: 'academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: SECONDARY },
       { id: 'academic-students', name: 'Students', icon: GraduationCap, color: SECONDARY },

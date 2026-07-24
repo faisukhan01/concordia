@@ -235,6 +235,8 @@ export const api = {
   reference: () => cachedGet<{ classes: string[]; sections: string[]; subjects: string[] }>('reference'),
   // classes & courses
   getClasses: (branchId?: string) => request<any[]>(branchId ? `classes?branchId=${branchId}` : 'classes'),
+  createClass: (name: string, section: string, branchId?: string) =>
+    request<any>('classes', { method: 'POST', body: JSON.stringify({ name, section, branchId }) }),
   getCourses: (params?: { branchId?: string; classId?: string }) => {
     const q = new URLSearchParams();
     if (params?.branchId) q.set('branchId', params.branchId);
