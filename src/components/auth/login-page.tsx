@@ -186,6 +186,14 @@ export function LoginPage() {
                   )}
                 </motion.button>
               </form>
+
+              {/* Compact student/teacher hint — visible on all screen sizes */}
+              <p className="text-[11px] text-white/60 mt-3 text-center leading-relaxed">
+                Students &amp; Teachers: sign in with your{' '}
+                <span className="font-mono text-white/80">Roll #</span> /{' '}
+                <span className="font-mono text-white/80">Teacher ID</span> and the password given
+                by the Accountant.
+              </p>
             </div>
 
             <p className="text-center text-[11px] text-white/70 mt-5 drop-shadow">
@@ -238,9 +246,24 @@ export function LoginPage() {
                 ))}
               </div>
 
-              <p className="text-[11px] text-white/50 mt-4 leading-relaxed">
-                Teacher &amp; Student logins are created by the Accountant after fee payment.
-              </p>
+              <div className="mt-4 rounded-lg border border-white/15 bg-white/5 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 mb-1.5">
+                  Student &amp; Teacher sign-in
+                </p>
+                <ul className="text-[11px] text-white/55 leading-relaxed space-y-1">
+                  <li>
+                    • Username = <span className="font-mono text-white/75">Roll Number</span>{' '}
+                    (students) or <span className="font-mono text-white/75">Teacher ID</span>{' '}
+                    (teachers)
+                  </li>
+                  <li>
+                    • Password = the <span className="text-white/75">unique password</span> the
+                    Accountant generated (shown in the “Login Ready” box) —{' '}
+                    <span className="text-white/75">not</span> “concordia123”
+                  </li>
+                  <li>• Accountant can reveal a forgotten password via Create Logins → Edit.</li>
+                </ul>
+              </div>
             </div>
           </motion.div>
         </div>
