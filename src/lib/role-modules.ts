@@ -121,6 +121,7 @@ export const ROLE_MODULES: RoleModules = {
     ]},
     { group: 'Academic Office', items: [
       { id: 'academic:academic-announcements', name: 'Announcements', icon: Megaphone, color: PRIMARY },
+      { id: 'academic:academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'academic:timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
       { id: 'academic:academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'academic:academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
@@ -171,15 +172,17 @@ export const ROLE_MODULES: RoleModules = {
   // ─────────────────────────────────────────────────────────────
   // Academic Office — teachers and students are created by the Accountant
   // (Create Logins page), so the Academic Office does NOT have separate
-  // Classes / Teachers / Students management pages. They focus on:
-  // announcements, timetables (with a teacher dropdown), date sheets,
-  // monthly tests, result review, and result cards.
+  // Teachers / Students management pages. They DO manage Classes (creating
+  // classes/sections), and then focus on: announcements, timetables (with a
+  // teacher dropdown of Accountant-created teachers), date sheets, monthly
+  // tests, result review, and result cards.
   'academic': [
     { group: 'Overview', items: [
       { id: 'academic-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
       { id: 'academic-announcements', name: 'Announcements', icon: Megaphone, color: PRIMARY },
     ]},
-    { group: 'Academics', items: [
+    { group: 'Classes & Academics', items: [
+      { id: 'academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
       { id: 'academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
