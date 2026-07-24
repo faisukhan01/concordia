@@ -303,11 +303,40 @@ export const api = {
   },
   getAllInvoices: () => request<any[]>('fee-invoices?all=1'),
   getBranchInvoices: () => cachedGet<any[]>('fee-invoices/branch'),
-  generateInvoices: (month: string, year: number) =>
-    request<any>('fee-invoices/generate', { method: 'POST', body: JSON.stringify({ month, year }) }),
-  markInvoicePaid: (id: string, paidAmount?: number, paymentMethod?: string) =>
-    request<any>(`fee-invoices/${id}/pay`, { method: 'PATCH', body: JSON.stringify({ paidAmount, paymentMethod }) }),
+  markInvoicePaid: async (id: string, paidAmount?: number, paymentMethod?: string) => {
+    const r = await request<any>(`fee-invoices/${id}/pay`, { method: 'PATCH', body: JSON.stringify({ paidAmount, paymentMethod }) });
+    invalidateCache();
+    return r;
+  },
   getChallanData: (id: string) => request<any>(`fee-invoices/${id}/challan`),
+  // Installments — split the locked base fee into N installment invoices
+  createInstallments: async (studentId: string, installments: { amount: number; dueDate: string }[]) => {
+    const r = await request<any>('fee-invoices/installments', { method: 'POST', body: JSON.stringify({ studentId, installments }) });
+    invalidateCache();
+    return r;
+  },
+  generateInvoices: async (month: string, year: number) => {
+    const r = await request<any>('fee-invoices/generate', { method: 'POST', body: JSON.stringify({ month, year }) });
+    invalidateCache();
+    return r;
+  },
+  // Misc charges — one-off fees (admission, exam, trip, custom)
+  getMiscCharges: (params?: { branchId?: string; studentId?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.branchId) q.set('branchId', params.branchId);
+    if (params?.studentId) q.set('studentId', params.studentId);
+    return request<any[]>(q.toString() ? `misc-charges?${q.toString()}` : 'misc-charges');
+  },
+  addMiscCharge: async (body: { studentId: string; type: string; amount: number; description?: string }) => {
+    const r = await request<any>('misc-charges', { method: 'POST', body: JSON.stringify(body) });
+    invalidateCache();
+    return r;
+  },
+  deleteMiscCharge: async (id: string) => {
+    const r = await request<any>(`misc-charges/${id}`, { method: 'DELETE' });
+    invalidateCache();
+    return r;
+  },
   // Institute-level finance & analytics (Institute Admin)
   getInstituteFinance: (instituteId: string) => cachedGet<any>(`institute/finance?instituteId=${instituteId}`),
   // Branch-level finance & analytics (Branch Manager)

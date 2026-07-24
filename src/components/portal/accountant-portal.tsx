@@ -86,7 +86,12 @@ import {
   ShieldAlert,
   Eye,
   EyeOff,
+  Download,
+  ChevronDown,
+  ChevronRight,
+  Wallet,
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 
 type Props = { activeModule: string; user: any };
 
@@ -339,15 +344,8 @@ function BlockedBadge() {
 // ───────────────────────── Constants ─────────────────────────
 
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'JazzCash', 'EasyPaisa', 'Card'];
-const MISC_CHARGE_TYPES = [
-  'Admission Fee',
-  'Registration Fee',
-  'Trip Fee',
-  'Exam Fee',
-  'Library Fee',
-  'Lab Fee',
-  'Other',
-];
+// Per user spec: show 2 fixed charge types + "Other" (customizable by admin).
+const MISC_CHARGE_TYPES = ['Admission Fee', 'Exam Fee', 'Other'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -500,9 +498,13 @@ export function AccountantPortal({ activeModule, user }: Props) {
         onRefresh={refresh}
       />
     );
-  else if (activeModule === 'accountant-collect')
+  else if (
+    activeModule === 'accountant-challans' ||
+    activeModule === 'accountant-collect' ||
+    activeModule === 'accountant-installments'
+  )
     content = (
-      <CollectPaymentView
+      <FeeInstallmentsView
         user={user}
         students={students}
         invoices={invoices}
@@ -512,21 +514,8 @@ export function AccountantPortal({ activeModule, user }: Props) {
         onStudentUpdate={upsertStudent}
       />
     );
-  else if (activeModule === 'accountant-challans')
-    content = (
-      <ChallansView
-        user={user}
-        invoices={invoices}
-        students={students}
-        loading={loading}
-        onRefresh={refresh}
-        onInvoiceUpdate={upsertInvoice}
-      />
-    );
-  else if (activeModule === 'accountant-installments')
-    content = <InstallmentsView students={students} loading={loading} />;
   else if (activeModule === 'accountant-misc')
-    content = <MiscChargesView students={students} />;
+    content = <MiscChargesView user={user} students={students} loading={loading} />;
   else if (activeModule === 'accountant-logins')
     content = (
       <LoginsView user={user} students={students} loading={loading} onUpdate={upsertStudent} />
@@ -789,31 +778,10 @@ function StudentsView({
   onRefresh: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [classFilter, setClassFilter] = useState('all');
+  const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [selected, setSelected] = useState<any | null>(null);
 
-  const classOptions = useMemo(() => {
-    const set = new Set<string>();
-    students.forEach((s) => s.class && set.add(s.class));
-    return Array.from(set).sort();
-  }, [students]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return students.filter((s) => {
-      if (classFilter !== 'all' && s.class !== classFilter) return false;
-      if (!q) return true;
-      return (
-        s.name?.toLowerCase().includes(q) ||
-        s.rollNo?.toLowerCase().includes(q) ||
-        s.fatherName?.toLowerCase().includes(q) ||
-        s.guardian?.toLowerCase().includes(q) ||
-        s.guardianPhone?.toLowerCase().includes(q)
-      );
-    });
-  }, [students, search, classFilter]);
-
-  // Map studentId → invoice summary for fast table lookups
+  // Map studentId → invoice summary for fast lookups
   const invoiceByStudent = useMemo(() => {
     const map: Record<string, any[]> = {};
     invoices.forEach((inv) => {
@@ -824,11 +792,53 @@ function StudentsView({
     return map;
   }, [invoices]);
 
+  // Group students by class (e.g. "Class 5 - A"). Falls back to "Unassigned".
+  const classGroups = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    students.forEach((s) => {
+      const cls = s.class ? (s.section ? `${s.class} - ${s.section}` : s.class) : 'Unassigned';
+      (groups[cls] ||= []).push(s);
+    });
+    return Object.entries(groups)
+      .map(([className, list]) => ({
+        className,
+        students: list.sort((a, b) => (a.rollNo || '').localeCompare(b.rollNo || '')),
+      }))
+      .sort((a, b) => a.className.localeCompare(b.className));
+  }, [students]);
+
+  // Filter class groups by search query (matches student name/roll/guardian/contact)
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return classGroups;
+    return classGroups
+      .map((g) => ({
+        ...g,
+        students: g.students.filter(
+          (s) =>
+            s.name?.toLowerCase().includes(q) ||
+            s.rollNo?.toLowerCase().includes(q) ||
+            s.fatherName?.toLowerCase().includes(q) ||
+            s.guardian?.toLowerCase().includes(q) ||
+            s.guardianPhone?.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((g) => g.students.length > 0);
+  }, [classGroups, search]);
+
+  const totalStudents = students.length;
+  const totalLocked = students.filter(
+    (s) => s.baseFeeLocked && s.baseFee != null && s.baseFee !== '',
+  ).length;
+  const totalCollected = invoices
+    .filter((i) => (i.status || '').toLowerCase() === 'paid')
+    .reduce((sum, i) => sum + Number(i.paidAmount || i.amount || 0), 0);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Students (Class-wise)"
-        subtitle="View every enrolled student and their current fee standing."
+        subtitle="Browse enrolled students grouped by class — click a class card to see every student inside."
         action={
           <Button
             variant="outline"
@@ -841,139 +851,199 @@ function StudentsView({
         }
       />
 
-      {/* Filters */}
+      {/* KPI strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          icon={GraduationCap}
+          label="Total Students"
+          value={totalStudents}
+          sub={`${classGroups.length} class${classGroups.length === 1 ? '' : 'es'}`}
+        />
+        <StatCard
+          icon={Lock}
+          label="Fee Locked"
+          value={totalLocked}
+          sub="Ready for installments"
+        />
+        <StatCard
+          icon={Wallet}
+          label="Collected"
+          value={fmtMoney(totalCollected)}
+          sub="All-time paid"
+        />
+      </div>
+
+      {/* Search */}
       <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, roll #, father / guardian, or contact…"
-              className={`${inputCls} pl-9`}
-            />
-          </div>
-          <Select value={classFilter} onValueChange={setClassFilter}>
-            <SelectTrigger className={`${inputCls} w-full sm:w-52`}>
-              <SelectValue placeholder="All classes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All classes</SelectItem>
-              {classOptions.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="relative">
+          <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, roll #, father / guardian, or contact…"
+            className={`${inputCls} pl-9`}
+          />
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        {loading ? (
-          <SkeletonTable rows={6} />
-        ) : filtered.length === 0 ? (
+      {/* Class cards */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
+        </div>
+      ) : filteredGroups.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
           <EmptyState
             icon={Users}
-            title={students.length === 0 ? 'No students enrolled' : 'No matching records'}
+            title={students.length === 0 ? 'No students enrolled yet' : 'No matching records'}
             desc={
               students.length === 0
-                ? 'The Admission Office must enroll students first.'
-                : 'Try adjusting your search or class filter.'
+                ? 'The Admission Office must enroll students first. Once enrolled, they will appear here grouped by class.'
+                : 'Try a different search query.'
             }
           />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-gray-200 hover:bg-transparent">
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Roll #
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Name
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Father / Guardian
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Contact
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Class
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                    Base Fee
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                    Paid
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                    Balance
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-center">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((s) => {
-                  const invs = invoiceByStudent[s.id] || [];
-                  const paid = sumPaid(invs);
-                  const balance = sumOutstanding(invs);
-                  const status = deriveFeeStatus(invs);
-                  return (
-                    <TableRow
-                      key={s.id}
-                      className="border-gray-100 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => setSelected(s)}
-                    >
-                      <TableCell className="text-sm font-mono text-gray-700">
-                        {s.rollNo || '—'}
-                      </TableCell>
-                      <TableCell className="text-sm font-medium text-gray-900">
-                        {s.name}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-700">
-                        {s.guardian || s.fatherName || '—'}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-700 tabular-nums">
-                        {s.guardianPhone || '—'}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-700">
-                        {s.class || '—'}
-                        {s.section ? (
-                          <span className="text-gray-400"> · {s.section}</span>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-700 text-right tabular-nums">
-                        {s.baseFee ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Lock className="h-3 w-3 text-gray-400" />
-                            {fmtMoney(Number(s.baseFee))}
-                          </span>
-                        ) : (
-                          '—'
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredGroups.map((g) => {
+            const classPaid = g.students.reduce(
+              (acc, s) => acc + sumPaid(invoiceByStudent[s.id] || []),
+              0,
+            );
+            const classBalance = g.students.reduce(
+              (acc, s) => acc + sumOutstanding(invoiceByStudent[s.id] || []),
+              0,
+            );
+            const isOpen = expandedClass === g.className;
+            return (
+              <div
+                key={g.className}
+                className={cn(
+                  'rounded-xl border bg-white overflow-hidden transition-all',
+                  isOpen ? 'border-[#F26522] shadow-sm md:col-span-2 xl:col-span-3' : 'border-gray-200 hover:border-gray-300',
+                )}
+              >
+                {/* Card header — always visible */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedClass(isOpen ? null : g.className)}
+                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-gray-50/60 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 rounded-lg bg-[#FFF0E8] grid place-items-center shrink-0">
+                      <GraduationCap className="h-5 w-5 text-[#F26522]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {g.className}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {g.students.length} student{g.students.length === 1 ? '' : 's'} ·{' '}
+                        <span className="text-emerald-700">Paid {fmtMoney(classPaid)}</span>
+                        {classBalance > 0 && (
+                          <span className="text-amber-700"> · Due {fmtMoney(classBalance)}</span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
-                        {fmtMoney(paid)}
-                      </TableCell>
-                      <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
-                        {fmtMoney(balance)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <StatusBadge status={status} />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
+                      </p>
+                    </div>
+                  </div>
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
+                  )}
+                </button>
+
+                {/* Expanded student list */}
+                {isOpen && (
+                  <div className="border-t border-gray-100">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-gray-100 hover:bg-transparent">
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4">
+                              Roll #
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4">
+                              Name
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4">
+                              Father / Guardian
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4">
+                              Contact
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4 text-right">
+                              Base Fee
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4 text-right">
+                              Paid
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4 text-right">
+                              Balance
+                            </TableHead>
+                            <TableHead className="text-[10px] font-medium uppercase tracking-wider text-gray-400 px-4 text-center">
+                              Status
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {g.students.map((s) => {
+                            const invs = invoiceByStudent[s.id] || [];
+                            const paid = sumPaid(invs);
+                            const balance = sumOutstanding(invs);
+                            const status = deriveFeeStatus(invs);
+                            return (
+                              <TableRow
+                                key={s.id}
+                                className="border-gray-100 hover:bg-gray-50 cursor-pointer"
+                                onClick={() => setSelected(s)}
+                              >
+                                <TableCell className="text-xs font-mono text-gray-700 px-4 py-2.5">
+                                  {s.rollNo || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs font-medium text-gray-900 px-4 py-2.5">
+                                  {s.name}
+                                </TableCell>
+                                <TableCell className="text-xs text-gray-700 px-4 py-2.5">
+                                  {s.guardian || s.fatherName || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs text-gray-700 px-4 py-2.5 tabular-nums">
+                                  {s.guardianPhone || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs text-gray-700 px-4 py-2.5 text-right tabular-nums">
+                                  {s.baseFee ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <Lock className="h-3 w-3 text-gray-400" />
+                                      {fmtMoney(Number(s.baseFee))}
+                                    </span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-xs font-semibold text-gray-900 px-4 py-2.5 text-right tabular-nums">
+                                  {fmtMoney(paid)}
+                                </TableCell>
+                                <TableCell className="text-xs font-semibold text-gray-900 px-4 py-2.5 text-right tabular-nums">
+                                  {fmtMoney(balance)}
+                                </TableCell>
+                                <TableCell className="px-4 py-2.5 text-center">
+                                  <StatusBadge status={status} />
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Fee detail sheet */}
       <StudentFeeSheet
@@ -1110,9 +1180,19 @@ function StudentFeeSheet({
   );
 }
 
-// ───────────────────────── 3. Collect Payment ─────────────────────────
+// ───────────────────────── 3. Fee & Installments (merged) ─────────────────────────
+//
+// One unified page that replaces the old Collect Payment + Fee Challans +
+// Installments pages. The accountant can:
+//   1. Pick a student whose base fee has been locked by the Admission Office
+//   2. Split the locked base fee into 3-5 installments (creates invoice rows)
+//   3. Mark any installment / monthly invoice as Paid
+//   4. Download a print-ready challan as a PDF (jsPDF)
+//   5. Bulk-generate monthly tuition challans for the whole branch
 
-function CollectPaymentView({
+type InstallmentRow = { id: string; amount: string; due: string };
+
+function FeeInstallmentsView({
   user,
   students,
   invoices,
@@ -1131,90 +1211,156 @@ function CollectPaymentView({
 }) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<any | null>(null);
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState('Cash');
-  const [saving, setSaving] = useState(false);
-  const [generatedLogin, setGeneratedLogin] = useState<{
-    rollNo: string;
-    password: string;
-  } | null>(null);
+  const [rows, setRows] = useState<InstallmentRow[]>([]);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [generatedLogin, setGeneratedLogin] = useState<{ rollNo: string; password: string } | null>(null);
+  const [generatingMonthly, setGeneratingMonthly] = useState(false);
 
-  // When a student is selected, find their outstanding invoices.
-  const studentInvoices = useMemo(() => {
-    if (!selected) return [];
-    return invoices.filter(
-      (i) =>
-        (i.studentId === selected.id || i.userId === selected.id) &&
-        (i.status || '').toLowerCase() !== 'paid',
-    );
-  }, [invoices, selected]);
-
-  const studentPaidTotal = useMemo(() => {
-    if (!selected) return 0;
-    return invoices
-      .filter((i) => i.studentId === selected.id || i.userId === selected.id)
-      .reduce((acc, i) => acc + Number(i.paidAmount || 0), 0);
-  }, [invoices, selected]);
-
-  const outstanding = useMemo(
-    () =>
-      studentInvoices.reduce(
-        (acc, i) => acc + Number(i.amount || 0) - Number(i.paidAmount || 0),
-        0,
-      ),
-    [studentInvoices],
+  // Students with a locked base fee are the primary audience for this page.
+  const lockedStudents = useMemo(
+    () => students.filter((s) => s.baseFeeLocked && s.baseFee != null && s.baseFee !== ''),
+    [students],
   );
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return students;
-    return students.filter(
+    if (!q) return lockedStudents;
+    return lockedStudents.filter(
       (s) =>
         s.name?.toLowerCase().includes(q) ||
         s.rollNo?.toLowerCase().includes(q) ||
         s.class?.toLowerCase().includes(q),
     );
-  }, [students, search]);
+  }, [lockedStudents, search]);
 
-  const submit = async () => {
-    if (!selected) return;
-    const v = Number(amount);
-    if (!amount || isNaN(v) || v <= 0) {
-      toast({
-        title: 'Enter a valid amount',
-        description: 'Payment amount must be a positive number.',
-        variant: 'destructive',
+  // All invoices for the selected student
+  const studentInvoices = useMemo(() => {
+    if (!selected) return [];
+    return invoices
+      .filter((i) => i.studentId === selected.id || i.userId === selected.id)
+      .sort((a, b) => {
+        // Installments first (by dueDate), then monthly (by year/month desc)
+        const aType = (a.type || '').toLowerCase() === 'installment' ? 0 : 1;
+        const bType = (b.type || '').toLowerCase() === 'installment' ? 0 : 1;
+        if (aType !== bType) return aType - bType;
+        if (aType === 0) return (a.dueDate || '').localeCompare(b.dueDate || '');
+        return (b.year || 0) - (a.year || 0) || (a.month || '').localeCompare(b.month || '');
       });
+  }, [invoices, selected]);
+
+  const studentInstallments = useMemo(
+    () => studentInvoices.filter((i) => (i.type || '').toLowerCase() === 'installment'),
+    [studentInvoices],
+  );
+
+  const baseFee = Number(selected?.baseFee || 0);
+  const totalPlanned = rows.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+  const remaining = baseFee - totalPlanned;
+
+  const outstandingTotal = useMemo(
+    () =>
+      studentInvoices
+        .filter((i) => (i.status || '').toLowerCase() !== 'paid')
+        .reduce((acc, i) => acc + Number(i.amount || 0) - Number(i.paidAmount || 0), 0),
+    [studentInvoices],
+  );
+  const paidTotal = useMemo(
+    () =>
+      studentInvoices
+        .filter((i) => (i.status || '').toLowerCase() === 'paid')
+        .reduce((acc, i) => acc + Number(i.paidAmount || i.amount || 0), 0),
+    [studentInvoices],
+  );
+
+  // ── Installment plan builder helpers ──
+  const addRow = () =>
+    setRows((prev) => [...prev, { id: `inst-${Date.now()}`, amount: '', due: '' }]);
+
+  const updateRow = (id: string, patch: Partial<InstallmentRow>) =>
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const removeRow = (id: string) => setRows((prev) => prev.filter((r) => r.id !== id));
+
+  const autoSplit = (n: number) => {
+    if (!baseFee) return;
+    const per = Math.floor(baseFee / n);
+    const last = baseFee - per * (n - 1);
+    const now = new Date();
+    const next: InstallmentRow[] = Array.from({ length: n }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 5);
+      return {
+        id: `inst-${Date.now()}-${i}`,
+        amount: String(i === n - 1 ? last : per),
+        due: d.toISOString().split('T')[0],
+      };
+    });
+    setRows(next);
+    setPlanError(null);
+  };
+
+  const createPlan = async () => {
+    if (!selected) return;
+    if (rows.length === 0) {
+      setPlanError('Add at least one installment.');
       return;
     }
-    setSaving(true);
-    setGeneratedLogin(null);
+    if (rows.some((r) => !r.amount || !r.due)) {
+      setPlanError('Fill in all amounts and due dates.');
+      return;
+    }
+    if (totalPlanned !== baseFee) {
+      setPlanError(
+        `Installments total ${fmtMoney(totalPlanned)} — must equal the locked base fee ${fmtMoney(baseFee)}.`,
+      );
+      return;
+    }
+    setSavingPlan(true);
+    setPlanError(null);
     try {
-      // Mark the first outstanding invoice paid (or partial if amount < invoice).
-      const unpaid = studentInvoices[0];
-      if (unpaid) {
-        const updated = await api.markInvoicePaid(unpaid.id, v, method);
-        onInvoiceUpdate({
-          ...unpaid,
-          ...updated,
-          status: v >= Number(unpaid.amount) - Number(unpaid.paidAmount) ? 'Paid' : 'Partial',
-          paidAmount: Number(unpaid.paidAmount || 0) + v,
-          paidAt: new Date().toISOString(),
-          paymentMethod: method,
-        });
-      }
+      const payload = rows.map((r) => ({ amount: Number(r.amount), dueDate: r.due }));
+      await api.createInstallments(selected.id, payload);
       toast({
-        title: 'Payment recorded',
-        description: `${selected.name} — ${fmtMoney(v)} via ${method}`,
+        title: 'Installment plan created',
+        description: `${rows.length} installments for ${selected.name}.`,
       });
-      setAmount('');
+      setRows([]);
+      onRefresh();
+    } catch (e: any) {
+      toast({
+        title: 'Could not create installments',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingPlan(false);
+    }
+  };
 
+  // ── Mark an invoice paid ──
+  const markPaid = async (inv: any) => {
+    setMarkingId(inv.id);
+    try {
+      const updated = await api.markInvoicePaid(inv.id, Number(inv.amount), 'Cash');
+      onInvoiceUpdate({
+        ...inv,
+        ...updated,
+        status: 'Paid',
+        paidAmount: Number(inv.amount),
+        paidAt: new Date().toISOString(),
+        paymentMethod: 'Cash',
+      });
+      toast({
+        title: 'Marked as paid',
+        description: `${inv.studentName || selected?.name} — ${fmtMoney(Number(inv.amount))}`,
+      });
       // If first payment (no real login yet), offer to generate one.
-      if (!hasRealLogin(selected)) {
+      if (selected && !hasRealLogin(selected)) {
         const password = genDefaultPassword();
         const rollNo = selected.rollNo || selected.email?.split('@')[0] || selected.id;
         try {
-          // PATCH the existing student row with the real credentials.
           await api.editUser(selected.id, {
             email: `${String(rollNo).toLowerCase()}@concordia.edu.pk`,
             password,
@@ -1230,309 +1376,198 @@ function CollectPaymentView({
             description: `Username ${rollNo} — share the credentials below.`,
           });
         } catch {
-          // Backend sync failed — still surface the staged credentials.
           setGeneratedLogin({ rollNo: String(rollNo), password });
         }
       }
     } catch (e: any) {
       toast({
-        title: 'Could not record payment',
+        title: 'Could not mark paid',
         description: e?.message || 'Please try again.',
         variant: 'destructive',
       });
     } finally {
-      setSaving(false);
+      setMarkingId(null);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Collect Payment"
-        subtitle="Record a fee payment and, on first payment, generate the student login."
-        action={
-          <Button
-            variant="outline"
-            className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
-            onClick={onRefresh}
-          >
-            <Loader2 className={cn('h-4 w-4 mr-1.5', loading && 'animate-spin')} />
-            Refresh
-          </Button>
+  // ── Download a challan as PDF (jsPDF) ──
+  const downloadChallanPdf = async (inv: any) => {
+    setDownloadingId(inv.id);
+    try {
+      let data = inv;
+      // Fetch the full challan data (includes institute + branch names) for a clean PDF.
+      try {
+        const full = await api.getChallanData(inv.id);
+        data = { ...inv, ...full };
+      } catch {}
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = doc.internal.pageSize.getWidth();
+      const M = 40;
+      let y = 50;
+
+      // Top accent bar
+      doc.setFillColor(242, 101, 34); // #F26522
+      doc.rect(0, 0, W, 6, 'F');
+
+      // Header
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(17, 24, 39);
+      doc.text(data.instituteName || user?.instituteName || 'Concordia College', M, y);
+      y += 18;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128);
+      doc.text(data.branchName || user?.branchName || 'Main Campus', M, y);
+      doc.text('Fee Challan', M, y + 14);
+
+      // Challan # + status (right)
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text('Challan #', W - M, y, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(17, 24, 39);
+      doc.text(data.challanNo || String(data.id || '').slice(0, 12), W - M, y + 14, { align: 'right' });
+
+      y += 38;
+      doc.setDrawColor(229, 231, 235);
+      doc.line(M, y, W - M, y);
+      y += 22;
+
+      // Student info grid (2 cols)
+      const colW = (W - 2 * M) / 2;
+      const infoRows: [string, string][] = [
+        ['Student', data.studentName || selected?.name || '—'],
+        ['Class', `${data.className || data.class || selected?.class || '—'}${data.section || selected?.section ? ' \u00b7 ' + (data.section || selected?.section) : ''}`],
+        ['Roll #', data.rollNo || selected?.rollNo || '—'],
+        ['Period', data.dueDate
+          ? `Due ${formatDate(data.dueDate)}`
+          : `${data.month ? monthName(data.month) : '—'}${data.year ? ' ' + data.year : ''}`],
+        ['Type', data.type || 'Tuition'],
+        ['Status', (data.status || 'Unpaid')],
+      ];
+      doc.setFontSize(9);
+      infoRows.forEach((r, i) => {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        const x = M + col * colW;
+        const ry = y + row * 32;
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(156, 163, 175);
+        doc.text(r[0].toUpperCase(), x, ry);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(17, 24, 39);
+        doc.text(r[1], x, ry + 14);
+      });
+      y += 32 * 3 + 6;
+
+      // Fee breakdown table
+      doc.setDrawColor(229, 231, 235);
+      doc.setFillColor(249, 250, 251);
+      doc.rect(M, y, W - 2 * M, 24, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text('DESCRIPTION', M + 10, y + 16);
+      doc.text('AMOUNT (Rs)', W - M - 10, y + 16, { align: 'right' });
+      y += 24;
+
+      const desc = data.type === 'Installment'
+        ? `Installment — Due ${formatDate(data.dueDate)}`
+        : `${data.type || 'Tuition'} Fee — ${data.month ? monthName(data.month) : ''} ${data.year || ''}`;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(17, 24, 39);
+      doc.text(desc, M + 10, y + 16);
+      doc.text(Number(data.amount || 0).toLocaleString('en-PK'), W - M - 10, y + 16, { align: 'right' });
+      y += 30;
+
+      // Total
+      doc.setDrawColor(229, 231, 235);
+      doc.line(M, y, W - M, y);
+      y += 8;
+      doc.setFillColor(249, 250, 251);
+      doc.rect(M, y, W - 2 * M, 28, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(17, 24, 39);
+      doc.text('TOTAL PAYABLE', M + 10, y + 18);
+      doc.text(`Rs ${Number(data.amount || 0).toLocaleString('en-PK')}`, W - M - 10, y + 18, { align: 'right' });
+      y += 44;
+
+      // Payment status box
+      const statusLower = (data.status || '').toLowerCase();
+      if (statusLower === 'paid') {
+        doc.setDrawColor(167, 243, 208);
+        doc.setFillColor(236, 253, 245);
+        doc.rect(M, y, W - 2 * M, 32, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(4, 120, 87);
+        doc.text('PAID', M + 12, y + 20);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(4, 120, 87);
+        if (data.paidDate || data.paidAt) {
+          doc.text(`Paid on ${formatDate(data.paidDate || data.paidAt)}`, W - M - 12, y + 20, { align: 'right' });
         }
-      />
+      } else {
+        doc.setDrawColor(254, 215, 170);
+        doc.setFillColor(255, 247, 237);
+        doc.rect(M, y, W - 2 * M, 32, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(194, 120, 3);
+        doc.text('UNPAID', M + 12, y + 20);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(194, 120, 3);
+        if (data.dueDate) {
+          doc.text(`Due ${formatDate(data.dueDate)}`, W - M - 12, y + 20, { align: 'right' });
+        }
+      }
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Student picker */}
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <SectionHeader title="1. Select Student" />
-          <div className="relative mb-3">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search students…"
-              className={`${inputCls} pl-9`}
-            />
-          </div>
-          {loading ? (
-            <SkeletonTable rows={4} />
-          ) : (
-            <div className="space-y-1.5 max-h-[28rem] overflow-y-auto -mr-1 pr-1">
-              {filteredStudents.length === 0 ? (
-                <EmptyState icon={Users} title="No students" desc="Adjust your search." />
-              ) : (
-                filteredStudents.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setSelected(s);
-                      setGeneratedLogin(null);
-                      setAmount('');
-                    }}
-                    className={cn(
-                      'w-full text-left p-3 rounded-lg border transition-colors',
-                      selected?.id === s.id
-                        ? 'border-[#F26522] bg-[#F26522]/5'
-                        : 'border-gray-200 hover:bg-gray-50',
-                    )}
-                  >
-                    <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
-                    <div className="text-[11px] text-gray-500 truncate">
-                      {s.rollNo} · {s.class || '—'}
-                      {s.section ? `-${s.section}` : ''}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+      // Footer
+      const fy = doc.internal.pageSize.getHeight() - 50;
+      doc.setDrawColor(229, 231, 235);
+      doc.line(M, fy, W - M, fy);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175);
+      doc.text(
+        'This is a computer-generated challan and does not require a physical signature.',
+        M,
+        fy + 16,
+      );
+      doc.text(`Generated on ${formatDate(new Date().toISOString())}`, W - M, fy + 16, { align: 'right' });
 
-        {/* Fee summary + payment form */}
-        <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-5">
-          {!selected ? (
-            <EmptyState
-              icon={CreditCard}
-              title="Select a student"
-              desc="Choose a student on the left to record their fee payment."
-            />
-          ) : (
-            <div className="space-y-5">
-              {/* Student summary */}
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{selected.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {selected.rollNo} · {selected.class || '—'}
-                    {selected.section ? `-${selected.section}` : ''}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                    Base Fee (locked)
-                  </p>
-                  <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5 justify-end mt-0.5">
-                    <Lock className="h-3 w-3 text-gray-400" />
-                    {fmtMoney(Number(selected.baseFee || 0))}
-                  </p>
-                </div>
-              </div>
+      const fileName = `Challan-${data.challanNo || data.id}.pdf`;
+      doc.save(fileName);
+      toast({ title: 'Challan downloaded', description: fileName });
+    } catch (e: any) {
+      toast({
+        title: 'Could not download PDF',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
-              {/* Outstanding invoices */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                    Outstanding Invoices
-                  </h4>
-                  <span className="text-xs text-gray-500">
-                    Total due: <span className="font-semibold text-gray-900">{fmtMoney(outstanding)}</span>
-                  </span>
-                </div>
-                {studentInvoices.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
-                    No outstanding invoices. Generate a challan from the Fee Challans tab.
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {studentInvoices.map((i) => (
-                      <div
-                        key={i.id}
-                        className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-700">
-                            {i.month ? monthName(i.month) : '—'}
-                            {i.year ? ` ${i.year}` : ''}
-                          </p>
-                          <p className="text-[11px] text-gray-400">
-                            Invoice {(i.challanNo || i.id || '').slice(0, 10)}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-semibold text-gray-900 tabular-nums">
-                            {fmtMoney(Number(i.amount) - Number(i.paidAmount || 0))}
-                          </p>
-                          <StatusBadge status={i.status} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Payment form */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Amount (Rs)" required>
-                  <div className="relative">
-                    <DollarSign className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <Input
-                      type="number"
-                      min={0}
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0"
-                      className={`${inputCls} pl-9`}
-                    />
-                  </div>
-                </Field>
-                <Field label="Payment Method">
-                  <Select value={method} onValueChange={setMethod}>
-                    <SelectTrigger className={`${inputCls} w-full`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHODS.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-
-              <Button
-                className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-10 px-4 text-sm font-medium w-full"
-                onClick={submit}
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Recording…
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="h-4 w-4 mr-1.5" /> Record Payment
-                  </>
-                )}
-              </Button>
-
-              {/* Collected so far */}
-              <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
-                <span>Collected so far from this student</span>
-                <span className="font-semibold text-gray-900 tabular-nums">
-                  {fmtMoney(studentPaidTotal)}
-                </span>
-              </div>
-
-              {/* Generated login confirmation */}
-              {generatedLogin && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <KeyRound className="h-4 w-4 text-emerald-700" />
-                    <p className="text-sm font-semibold text-emerald-800">
-                      Student login generated — share with the student
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="rounded-lg bg-white border border-emerald-100 p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                        Username (Roll #)
-                      </p>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <span className="font-mono font-semibold text-gray-900 text-sm">
-                          {generatedLogin.rollNo}
-                        </span>
-                        <CopyButton text={generatedLogin.rollNo} />
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-white border border-emerald-100 p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-400">
-                        Default Password
-                      </p>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <span className="font-mono font-semibold text-gray-900 text-sm">
-                          {generatedLogin.password}
-                        </span>
-                        <CopyButton text={generatedLogin.password} />
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-emerald-700 mt-2.5">
-                    The student should change this password on first login.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────── 4. Fee Challans ─────────────────────────
-
-function ChallansView({
-  user,
-  invoices,
-  students,
-  loading,
-  onRefresh,
-  onInvoiceUpdate,
-}: {
-  user: any;
-  invoices: any[];
-  students: any[];
-  loading: boolean;
-  onRefresh: () => void;
-  onInvoiceUpdate: (inv: any) => void;
-}) {
-  const [view, setView] = useState<any | null>(null);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [generating, setGenerating] = useState(false);
-
-  // Filtered + sorted challan list (newest first)
-  const list = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return invoices
-      .filter((i) => {
-        if (statusFilter !== 'all' && (i.status || '').toLowerCase() !== statusFilter) return false;
-        if (!q) return true;
-        return (
-          i.studentName?.toLowerCase().includes(q) ||
-          i.challanNo?.toLowerCase().includes(q) ||
-          i.rollNo?.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }, [invoices, search, statusFilter]);
-
-  const generateChallans = async () => {
+  // ── Bulk-generate monthly tuition challans ──
+  const generateMonthly = async () => {
     const now = new Date();
     const m = MONTHS[now.getMonth()];
     const y = now.getFullYear();
-    setGenerating(true);
+    setGeneratingMonthly(true);
     try {
       const res = await api.generateInvoices(m, y);
       toast({
-        title: 'Challans generated',
+        title: 'Monthly challans generated',
         description:
-          res?.created != null
-            ? `${res.created} new challan(s) for ${m} ${y}.`
+          res?.generated != null
+            ? `${res.generated} new challan(s) for ${m} ${y}.`
             : `Challans queued for ${m} ${y}.`,
       });
       onRefresh();
@@ -1543,74 +1578,17 @@ function ChallansView({
         variant: 'destructive',
       });
     } finally {
-      setGenerating(false);
+      setGeneratingMonthly(false);
     }
   };
-
-  const markPaid = async (inv: any) => {
-    try {
-      const updated = await api.markInvoicePaid(inv.id, Number(inv.amount), 'Cash');
-      onInvoiceUpdate({
-        ...inv,
-        ...updated,
-        status: 'Paid',
-        paidAmount: Number(inv.amount),
-        paidAt: new Date().toISOString(),
-        paymentMethod: 'Cash',
-      });
-      setView(null);
-      toast({
-        title: 'Challan marked paid',
-        description: `${inv.studentName} — ${fmtMoney(Number(inv.amount))}`,
-      });
-    } catch (e: any) {
-      toast({
-        title: 'Could not mark paid',
-        description: e?.message || 'Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // If viewing a single challan, render the document
-  if (view) {
-    return (
-      <div className="space-y-6">
-        <PageHeader
-          title="Fee Challan"
-          subtitle={`Challan ${view.challanNo || view.id} — ${view.studentName || ''}`}
-          action={
-            <Button
-              variant="outline"
-              className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
-              onClick={() => setView(null)}
-            >
-              <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to list
-            </Button>
-          }
-        />
-
-        <div className="max-w-2xl mx-auto">
-          <ChallanDocument
-            challan={view}
-            branchName={user?.branchName || user?.instituteName || 'Concordia College'}
-            onMarkPaid={
-              (view.status || '').toLowerCase() === 'paid' ? undefined : () => markPaid(view)
-            }
-            onPrint={() => window.print()}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Fee Challans"
-        subtitle="Generate monthly challans and view each one as a print-ready document."
+        title="Fee & Installments"
+        subtitle="Split the locked base fee into installments, collect payments, and download challans as PDF."
         action={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant="outline"
               className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
@@ -1621,16 +1599,16 @@ function ChallansView({
             </Button>
             <Button
               className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium"
-              onClick={generateChallans}
-              disabled={generating || students.length === 0}
+              onClick={generateMonthly}
+              disabled={generatingMonthly || students.length === 0}
             >
-              {generating ? (
+              {generatingMonthly ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Generating…
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4 mr-1.5" /> Generate Challans
+                  <Plus className="h-4 w-4 mr-1.5" /> Generate Monthly Challans
                 </>
               )}
             </Button>
@@ -1638,394 +1616,90 @@ function ChallansView({
         }
       />
 
-      {/* Filters */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by student or challan #…"
-              className={`${inputCls} pl-9`}
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className={`${inputCls} w-full sm:w-44`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* List */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        {loading ? (
-          <SkeletonTable rows={6} />
-        ) : list.length === 0 ? (
-          <EmptyState
-            icon={Receipt}
-            title={invoices.length === 0 ? 'No challans issued yet' : 'No matching challans'}
-            desc={
-              invoices.length === 0
-                ? 'Click Generate Challans to create this month\'s invoices for confirmed admissions.'
-                : 'Try a different search or status filter.'
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-gray-200 hover:bg-transparent">
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Challan #
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Student
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Period
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                    Amount
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-center">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                    Action
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {list.map((i) => (
-                  <TableRow key={i.id} className="border-gray-100 hover:bg-gray-50">
-                    <TableCell className="text-sm font-mono text-gray-700">
-                      {i.challanNo || String(i.id || '').slice(0, 10)}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium text-gray-900">
-                      {i.studentName || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-700">
-                      {i.month ? monthName(i.month) : '—'}
-                      {i.year ? ` ${i.year}` : ''}
-                    </TableCell>
-                    <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
-                      {fmtMoney(Number(i.amount || 0))}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <StatusBadge status={i.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                        onClick={() => setView(i)}
-                      >
-                        <FileText className="h-3.5 w-3.5 mr-1" /> View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Print-friendly challan document. Subtle top accent line, NOT a gradient banner. */
-function ChallanDocument({
-  challan,
-  branchName,
-  onMarkPaid,
-  onPrint,
-}: {
-  challan: any;
-  branchName: string;
-  onMarkPaid?: () => void;
-  onPrint?: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-8 border-t-2 border-t-[#F26522]">
-      {/* Header */}
-      <div className="flex items-start justify-between border-b border-gray-200 pb-4 mb-5">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">{branchName}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Fee Challan</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400">Challan #</p>
-          <p className="text-sm font-mono font-semibold text-gray-900 mt-0.5">
-            {challan.challanNo || String(challan.id || '').slice(0, 12)}
-          </p>
-          <p className="text-[11px] text-gray-400 mt-1.5">
-            Issued: {formatDate(challan.createdAt)}
-          </p>
-        </div>
-      </div>
-
-      {/* Student info */}
-      <div className="grid grid-cols-2 gap-4 mb-5 text-sm">
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Student</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">
-            {challan.studentName || '—'}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Class</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">
-            {challan.className || challan.class || '—'}
-            {challan.section ? ` · ${challan.section}` : ''}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Period</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">
-            {challan.month ? monthName(challan.month) : '—'}
-            {challan.year ? ` ${challan.year}` : ''}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-gray-400">Type</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">
-            {challan.type || 'Tuition'}
-          </p>
-        </div>
-      </div>
-
-      {/* Fee breakdown */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-gray-200 hover:bg-transparent">
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                Description
-              </TableHead>
-              <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
-                Amount
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow className="border-gray-100">
-              <TableCell className="text-sm text-gray-700">
-                {challan.type || 'Tuition'} Fee — {challan.month ? monthName(challan.month) : ''}
-                {challan.year ? ` ${challan.year}` : ''}
-              </TableCell>
-              <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
-                {fmtMoney(Number(challan.amount || 0))}
-              </TableCell>
-            </TableRow>
-            <TableRow className="border-gray-100 bg-gray-50">
-              <TableCell className="text-sm font-bold text-gray-900">Total Payable</TableCell>
-              <TableCell className="text-base font-bold text-gray-900 text-right tabular-nums">
-                {fmtMoney(Number(challan.amount || 0))}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Status stamp + actions */}
-      <div className="mt-5 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase tracking-wider text-gray-400">Status</span>
-          <StatusBadge status={challan.status} />
-          {challan.paidAt && (
-            <span className="text-xs text-gray-500">Paid on {formatDate(challan.paidAt)}</span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
-            onClick={onPrint}
-          >
-            <Printer className="h-4 w-4 mr-1.5" /> Print
-          </Button>
-          {onMarkPaid && (
-            <Button
-              className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium"
-              onClick={onMarkPaid}
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1.5" /> Mark Paid
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <p className="text-[11px] text-gray-400 mt-5 pt-4 border-t border-gray-100">
-        This is a computer-generated challan and does not require a physical signature. Please
-        retain this document for your records.
-      </p>
-    </div>
-  );
-}
-
-// ───────────────────────── 5. Installments ─────────────────────────
-
-type InstallmentRow = { id: string; amount: string; due: string };
-
-function InstallmentsView({
-  students,
-  loading,
-}: {
-  students: any[];
-  loading: boolean;
-}) {
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<any | null>(null);
-  const [rows, setRows] = useState<InstallmentRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const filteredStudents = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return students;
-    return students.filter(
-      (s) =>
-        s.name?.toLowerCase().includes(q) ||
-        s.rollNo?.toLowerCase().includes(q) ||
-        s.class?.toLowerCase().includes(q),
-    );
-  }, [students, search]);
-
-  const baseFee = Number(selected?.baseFee || 0);
-  const totalPlanned = rows.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
-  const remaining = baseFee - totalPlanned;
-
-  const addRow = () =>
-    setRows((prev) => [
-      ...prev,
-      { id: `inst-${Date.now()}`, amount: '', due: '' },
-    ]);
-
-  const updateRow = (id: string, patch: Partial<InstallmentRow>) =>
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-
-  const removeRow = (id: string) => setRows((prev) => prev.filter((r) => r.id !== id));
-
-  // Auto-split helper — evenly divide the base fee into N installments
-  const autoSplit = (n: number) => {
-    if (!baseFee) return;
-    const per = Math.floor(baseFee / n);
-    const last = baseFee - per * (n - 1);
-    const now = new Date();
-    const next: InstallmentRow[] = Array.from({ length: n }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 5);
-      return {
-        id: `inst-${Date.now()}-${i}`,
-        amount: String(i === n - 1 ? last : per),
-        due: d.toISOString().split('T')[0],
-      };
-    });
-    setRows(next);
-    setError(null);
-  };
-
-  const save = () => {
-    if (rows.length === 0) {
-      toast({ title: 'Add at least one installment', variant: 'destructive' });
-      return;
-    }
-    if (rows.some((r) => !r.amount || !r.due)) {
-      toast({
-        title: 'Fill in all amounts and due dates',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (totalPlanned !== baseFee) {
-      setError(
-        `Installments total ${fmtMoney(totalPlanned)} — must equal base fee ${fmtMoney(baseFee)}.`,
-      );
-      return;
-    }
-    setError(null);
-    toast({
-      title: 'Installment plan saved',
-      description: `${rows.length} installments for ${selected.name}.`,
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Installments"
-        subtitle="Split the locked base fee into multiple due-dated installments."
-      />
-
       <LockedFeeCallout />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Student picker */}
+        {/* ── Student picker ── */}
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <SectionHeader title="Select Student" />
+          <SectionHeader
+            title="Select Student"
+            desc={lockedStudents.length === 0 ? 'No students with a locked fee yet.' : `${lockedStudents.length} student(s) with locked fee`}
+          />
           <div className="relative mb-3">
             <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search students…"
+              placeholder="Search by name, roll #, class…"
               className={`${inputCls} pl-9`}
             />
           </div>
           {loading ? (
             <SkeletonTable rows={4} />
           ) : (
-            <div className="space-y-1.5 max-h-[28rem] overflow-y-auto -mr-1 pr-1">
+            <div className="space-y-1.5 max-h-[32rem] overflow-y-auto -mr-1 pr-1">
               {filteredStudents.length === 0 ? (
-                <EmptyState icon={Users} title="No students" desc="Adjust your search." />
+                <EmptyState
+                  icon={Users}
+                  title={lockedStudents.length === 0 ? 'No locked fees' : 'No matching students'}
+                  desc={
+                    lockedStudents.length === 0
+                      ? 'The Admission Office must lock each student\'s base fee first.'
+                      : 'Try a different search.'
+                  }
+                />
               ) : (
-                filteredStudents.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setSelected(s);
-                      setRows([]);
-                      setError(null);
-                    }}
-                    className={cn(
-                      'w-full text-left p-3 rounded-lg border transition-colors',
-                      selected?.id === s.id
-                        ? 'border-[#F26522] bg-[#F26522]/5'
-                        : 'border-gray-200 hover:bg-gray-50',
-                    )}
-                  >
-                    <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
-                    <div className="text-[11px] text-gray-500 truncate">
-                      {s.rollNo} · {fmtMoney(Number(s.baseFee || 0))}
-                    </div>
-                  </button>
-                ))
+                filteredStudents.map((s) => {
+                  const invs = invoices.filter((i) => i.studentId === s.id || i.userId === s.id);
+                  const instCount = invs.filter((i) => (i.type || '').toLowerCase() === 'installment').length;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelected(s);
+                        setRows([]);
+                        setPlanError(null);
+                        setGeneratedLogin(null);
+                      }}
+                      className={cn(
+                        'w-full text-left p-3 rounded-lg border transition-colors',
+                        selected?.id === s.id
+                          ? 'border-[#F26522] bg-[#F26522]/5'
+                          : 'border-gray-200 hover:bg-gray-50',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                        {instCount > 0 && (
+                          <span className="text-[10px] uppercase tracking-wider text-emerald-700 border border-emerald-100 bg-emerald-50 rounded px-1.5 py-0.5 shrink-0">
+                            {instCount} inst.
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {s.rollNo} · {s.class || '—'}
+                        {s.section ? `-${s.section}` : ''} · {fmtMoney(Number(s.baseFee || 0))}
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
         </div>
 
-        {/* Plan builder */}
+        {/* ── Detail panel ── */}
         <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-5">
           {!selected ? (
             <EmptyState
-              icon={ClipboardList}
+              icon={Receipt}
               title="Select a student"
-              desc="Then split their base fee into 2–6 installments with due dates."
+              desc="Pick a student on the left to split their locked base fee into installments, collect payments, and download challans."
             />
           ) : (
             <div className="space-y-5">
-              {/* Base fee summary */}
+              {/* Student summary */}
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{selected.name}</p>
@@ -2045,111 +1719,284 @@ function InstallmentsView({
                 </div>
               </div>
 
-              {/* Quick-split */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-gray-500">Quick split:</span>
-                {[2, 3, 4].map((n) => (
-                  <Button
-                    key={n}
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
-                    onClick={() => autoSplit(n)}
-                    disabled={!baseFee}
-                  >
-                    {n} installments
-                  </Button>
-                ))}
+              {/* Paid + Outstanding KPIs */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Collected</p>
+                  <p className="text-base font-bold text-emerald-700 mt-1 tabular-nums">{fmtMoney(paidTotal)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Outstanding</p>
+                  <p className="text-base font-bold text-amber-700 mt-1 tabular-nums">{fmtMoney(outstandingTotal)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Installments</p>
+                  <p className="text-base font-bold text-gray-900 mt-1 tabular-nums">
+                    {studentInstallments.length}
+                    <span className="text-xs text-gray-400 font-normal"> / plan</span>
+                  </p>
+                </div>
               </div>
 
-              {/* Installment rows */}
-              {rows.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-500">
-                  No installments yet. Use a quick split or add rows manually below.
+              {/* ── Installment plan builder ── */}
+              {studentInstallments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/40 p-4">
+                  <SectionHeader
+                    title="Create Installment Plan"
+                    desc="Split the locked base fee into 3-5 due-dated installments."
+                  />
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    <span className="text-xs text-gray-500">Quick split:</span>
+                    {[3, 4, 5].map((n) => (
+                      <Button
+                        key={n}
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                        onClick={() => autoSplit(n)}
+                        disabled={!baseFee}
+                      >
+                        {n} installments
+                      </Button>
+                    ))}
+                  </div>
+                  {rows.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-500 bg-white">
+                      No installments yet. Use a quick split or add rows manually.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 text-[10px] uppercase tracking-wider text-gray-400 px-1">
+                        <span>#</span>
+                        <span>Amount (Rs)</span>
+                        <span>Due Date</span>
+                        <span />
+                      </div>
+                      {rows.map((r, i) => (
+                        <div key={r.id} className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 items-center">
+                          <span className="text-sm font-semibold text-gray-400 text-center">{i + 1}</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={r.amount}
+                            onChange={(e) => updateRow(r.id, { amount: e.target.value })}
+                            placeholder="0"
+                            className={`${inputCls} h-9`}
+                          />
+                          <Input
+                            type="date"
+                            value={r.due}
+                            onChange={(e) => updateRow(r.id, { due: e.target.value })}
+                            className={`${inputCls} h-9`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50"
+                            onClick={() => removeRow(r.id)}
+                            aria-label="Remove installment"
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <Button
+                      variant="outline"
+                      className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
+                      onClick={addRow}
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" /> Add Row
+                    </Button>
+                    <Button
+                      className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium ml-auto"
+                      onClick={createPlan}
+                      disabled={savingPlan || rows.length === 0}
+                    >
+                      {savingPlan ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Saving…
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1.5" /> Create Installments
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {/* Totals */}
+                  {rows.length > 0 && (
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-1.5 mt-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Base Fee</span>
+                        <span className="font-mono text-gray-900">{fmtMoney(baseFee)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Planned Total</span>
+                        <span className="font-mono text-gray-900">{fmtMoney(totalPlanned)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-gray-200">
+                        <span className="font-semibold text-gray-700">Remaining</span>
+                        <span
+                          className={cn(
+                            'font-bold tabular-nums font-mono',
+                            remaining === 0 ? 'text-emerald-700' : 'text-gray-900',
+                          )}
+                        >
+                          {fmtMoney(remaining)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {planError && (
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-center gap-2 mt-3">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      {planError}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 text-[10px] uppercase tracking-wider text-gray-400 px-1">
-                    <span>#</span>
-                    <span>Amount (Rs)</span>
-                    <span>Due Date</span>
-                    <span />
-                  </div>
-                  {rows.map((r, i) => (
-                    <div
-                      key={r.id}
-                      className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 items-center"
-                    >
-                      <span className="text-sm font-semibold text-gray-400 text-center">
-                        {i + 1}
-                      </span>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={r.amount}
-                        onChange={(e) => updateRow(r.id, { amount: e.target.value })}
-                        placeholder="0"
-                        className={`${inputCls} h-9`}
-                      />
-                      <Input
-                        type="date"
-                        value={r.due}
-                        onChange={(e) => updateRow(r.id, { due: e.target.value })}
-                        className={`${inputCls} h-9`}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50"
-                        onClick={() => removeRow(r.id)}
-                        aria-label="Remove installment"
-                      >
-                        ×
-                      </Button>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-800">Installment plan active</p>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        {studentInstallments.length} installments · use the list below to mark paid or download.
+                      </p>
                     </div>
-                  ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs border-emerald-200 bg-white hover:bg-emerald-50 text-emerald-700"
+                    onClick={() => {
+                      setRows(
+                        studentInstallments.map((i) => ({
+                          id: `inst-${i.id}`,
+                          amount: String(i.amount),
+                          due: i.dueDate || '',
+                        })),
+                      );
+                      setPlanError(null);
+                    }}
+                  >
+                    Re-split
+                  </Button>
                 </div>
               )}
 
-              <Button
-                variant="outline"
-                className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium"
-                onClick={addRow}
-              >
-                <Plus className="h-4 w-4 mr-1.5" /> Add Installment
-              </Button>
-
-              {/* Totals */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1.5">
-                <Row label="Base Fee" value={fmtMoney(baseFee)} mono />
-                <Row label="Planned Total" value={fmtMoney(totalPlanned)} mono />
-                <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-gray-200">
-                  <span className="text-sm font-semibold text-gray-700">Remaining</span>
-                  <span
-                    className={cn(
-                      'text-sm font-bold tabular-nums',
-                      remaining === 0 ? 'text-emerald-700' : 'text-gray-900',
-                    )}
-                  >
-                    {fmtMoney(remaining)}
-                  </span>
-                </div>
+              {/* ── Invoices list ── */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                  All Invoices & Installments
+                </h4>
+                {studentInvoices.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
+                    No invoices yet. Create an installment plan above.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {studentInvoices.map((inv) => {
+                      const isPaid = (inv.status || '').toLowerCase() === 'paid';
+                      const isInstallment = (inv.type || '').toLowerCase() === 'installment';
+                      return (
+                        <div
+                          key={inv.id}
+                          className={cn(
+                            'flex items-center justify-between gap-3 p-3 rounded-lg border',
+                            isPaid ? 'border-emerald-100 bg-emerald-50/40' : 'border-gray-200 bg-white',
+                          )}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-gray-900">
+                                {isInstallment
+                                  ? `Installment — Due ${formatDate(inv.dueDate)}`
+                                  : `${inv.type || 'Tuition'} — ${inv.month ? monthName(inv.month) : ''} ${inv.year || ''}`}
+                              </p>
+                              <StatusBadge status={inv.status} />
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                              {inv.challanNo || String(inv.id || '').slice(0, 12)}
+                              {inv.paidAt && ` · Paid ${formatDate(inv.paidAt)}`}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-gray-900 tabular-nums">
+                              {fmtMoney(Number(inv.amount || 0))}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-2.5 text-xs border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                              onClick={() => downloadChallanPdf(inv)}
+                              disabled={downloadingId === inv.id}
+                            >
+                              {downloadingId === inv.id ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              PDF
+                            </Button>
+                            {!isPaid && (
+                              <Button
+                                size="sm"
+                                className="h-8 px-2.5 text-xs bg-[#F26522] hover:bg-[#D4541E] text-white"
+                                onClick={() => markPaid(inv)}
+                                disabled={markingId === inv.id}
+                              >
+                                {markingId === inv.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                )}
+                                Mark Paid
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {error && (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-center gap-2">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  {error}
+              {/* Generated login confirmation */}
+              {generatedLogin && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <KeyRound className="h-4 w-4 text-emerald-700" />
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Student login generated — share with the student
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-white border border-emerald-100 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400">Username (Roll #)</p>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="font-mono font-semibold text-gray-900 text-sm">{generatedLogin.rollNo}</span>
+                        <CopyButton text={generatedLogin.rollNo} />
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-white border border-emerald-100 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400">Default Password</p>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="font-mono font-semibold text-gray-900 text-sm">{generatedLogin.password}</span>
+                        <CopyButton text={generatedLogin.password} />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 mt-2.5">
+                    The student should change this password on first login.
+                  </p>
                 </div>
               )}
-
-              <Button
-                className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium"
-                onClick={save}
-                disabled={rows.length === 0}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Save Installment Plan
-              </Button>
             </div>
           )}
         </div>
@@ -2157,6 +2004,7 @@ function InstallmentsView({
     </div>
   );
 }
+
 
 // ───────────────────────── 6. Miscellaneous Charges ─────────────────────────
 
@@ -2166,17 +2014,40 @@ type MiscCharge = {
   studentName: string;
   type: string;
   amount: number;
-  desc: string;
+  description: string;
   createdAt: string;
 };
 
-function MiscChargesView({ students }: { students: any[] }) {
+function MiscChargesView({ user, students, loading }: { user: any; students: any[]; loading: boolean }) {
   const [charges, setCharges] = useState<MiscCharge[]>([]);
+  const [chargesLoading, setChargesLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [selStudent, setSelStudent] = useState('');
   const [type, setType] = useState(MISC_CHARGE_TYPES[0]);
+  const [customType, setCustomType] = useState('');
   const [amount, setAmount] = useState('');
   const [desc, setDesc] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Load persisted misc charges for the branch
+  useEffect(() => {
+    let cancelled = false;
+    setChargesLoading(true);
+    api
+      .getMiscCharges({ branchId: user?.branchId })
+      .then((data) => {
+        if (cancelled) return;
+        setCharges(Array.isArray(data) ? (data as MiscCharge[]) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCharges([]);
+      })
+      .finally(() => !cancelled && setChargesLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.branchId]);
 
   const filteredCharges = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2188,11 +2059,33 @@ function MiscChargesView({ students }: { students: any[] }) {
     );
   }, [charges, search]);
 
+  // Searchable student list — fixes the "no student shown" issue by showing
+  // every enrolled student in a scrollable, filterable list instead of a
+  // limited native <Select> dropdown.
+  const filteredStudents = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter(
+      (s) =>
+        s.name?.toLowerCase().includes(q) ||
+        s.rollNo?.toLowerCase().includes(q) ||
+        s.class?.toLowerCase().includes(q),
+    );
+  }, [students, studentSearch]);
+
+  const selectedStudent = students.find((s) => s.id === selStudent);
+  const isOther = type === 'Other';
+  const finalType = isOther ? customType.trim() : type;
+
   const total = charges.reduce((acc, c) => acc + c.amount, 0);
 
-  const add = () => {
+  const add = async () => {
     if (!selStudent) {
       toast({ title: 'Select a student', variant: 'destructive' });
+      return;
+    }
+    if (isOther && !customType.trim()) {
+      toast({ title: 'Enter a custom charge type', variant: 'destructive' });
       return;
     }
     const v = Number(amount);
@@ -2204,35 +2097,64 @@ function MiscChargesView({ students }: { students: any[] }) {
       });
       return;
     }
-    const s = students.find((x) => x.id === selStudent);
-    const newCharge: MiscCharge = {
-      id: `MC-${Date.now()}`,
-      studentId: selStudent,
-      studentName: s?.name || '—',
-      type,
-      amount: v,
-      desc: desc.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setCharges((prev) => [newCharge, ...prev]);
-    setAmount('');
-    setDesc('');
-    toast({
-      title: 'Charge added',
-      description: `${type} — ${fmtMoney(v)} for ${s?.name || 'student'}.`,
-    });
+    setSaving(true);
+    try {
+      const created = await api.addMiscCharge({
+        studentId: selStudent,
+        type: finalType,
+        amount: v,
+        description: desc.trim(),
+      });
+      const newCharge: MiscCharge = {
+        id: created.id || `MC-${Date.now()}`,
+        studentId: selStudent,
+        studentName: created.studentName || selectedStudent?.name || '—',
+        type: finalType,
+        amount: v,
+        description: desc.trim(),
+        createdAt: created.createdAt || new Date().toISOString(),
+      };
+      setCharges((prev) => [newCharge, ...prev]);
+      setAmount('');
+      setDesc('');
+      setCustomType('');
+      setType(MISC_CHARGE_TYPES[0]);
+      toast({
+        title: 'Charge added',
+        description: `${finalType} — ${fmtMoney(v)} for ${selectedStudent?.name || 'student'}.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Could not add charge',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const remove = (id: string) => {
-    setCharges((prev) => prev.filter((c) => c.id !== id));
-    toast({ title: 'Charge removed' });
+  const remove = async (id: string) => {
+    const prev = charges;
+    setCharges((c) => c.filter((x) => x.id !== id));
+    try {
+      await api.deleteMiscCharge(id);
+      toast({ title: 'Charge removed' });
+    } catch (e: any) {
+      setCharges(prev); // rollback
+      toast({
+        title: 'Could not remove charge',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Miscellaneous Charges"
-        subtitle="Admission, registration, trip, exam and other one-off fees — separate from base tuition."
+        subtitle="One-off fees (admission, exam, or custom) — separate from base tuition."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -2240,23 +2162,77 @@ function MiscChargesView({ students }: { students: any[] }) {
         <div className="lg:col-span-2 rounded-xl border border-gray-200 bg-white p-5">
           <SectionHeader title="Add Charge" desc="Record a one-off fee for a student." />
           <div className="space-y-3">
+            {/* Searchable student picker */}
             <Field label="Student" required>
-              <Select value={selStudent} onValueChange={setSelStudent}>
-                <SelectTrigger className={`${inputCls} w-full`}>
-                  <SelectValue placeholder="Select student…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-gray-500">No students enrolled.</div>
+              {selStudent ? (
+                <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-[#F26522] bg-[#F26522]/5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {selectedStudent?.name || '—'}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {selectedStudent?.rollNo || '—'} · {selectedStudent?.class || '—'}
+                      {selectedStudent?.section ? `-${selectedStudent.section}` : ''}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    onClick={() => setSelStudent('')}
+                  >
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <div className="relative mb-2">
+                    <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Input
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      placeholder="Search students by name, roll #, class…"
+                      className={`${inputCls} pl-9`}
+                    />
+                  </div>
+                  {loading ? (
+                    <SkeletonTable rows={3} />
+                  ) : students.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
+                      No students enrolled yet. The Admission Office must enroll students first.
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto -mr-1 pr-1 space-y-1.5 rounded-lg border border-gray-200 p-1.5">
+                      {filteredStudents.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-gray-500 text-center">
+                          No matching students.
+                        </div>
+                      ) : (
+                        filteredStudents.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setSelStudent(s.id);
+                              setStudentSearch('');
+                            }}
+                            className="w-full text-left p-2.5 rounded-md border border-transparent hover:border-gray-200 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                            <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                              {s.rollNo || '—'} · {s.class || '—'}
+                              {s.section ? `-${s.section}` : ''}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
-                  {students.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.rollNo || '—'})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </Field>
+
+            {/* Charge type — 2 fixed + Other (custom) */}
             <Field label="Charge Type" required>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger className={`${inputCls} w-full`}>
@@ -2270,7 +2246,16 @@ function MiscChargesView({ students }: { students: any[] }) {
                   ))}
                 </SelectContent>
               </Select>
+              {isOther && (
+                <Input
+                  value={customType}
+                  onChange={(e) => setCustomType(e.target.value)}
+                  placeholder="Enter custom charge type (e.g. Sports Fee, Trip Fee…)"
+                  className={`${inputCls} w-full mt-2`}
+                />
+              )}
             </Field>
+
             <Field label="Amount (Rs)" required>
               <div className="relative">
                 <DollarSign className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -2296,8 +2281,17 @@ function MiscChargesView({ students }: { students: any[] }) {
             <Button
               className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-10 px-4 text-sm font-medium w-full"
               onClick={add}
+              disabled={saving}
             >
-              <Plus className="h-4 w-4 mr-1.5" /> Add Charge
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Saving…
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-1.5" /> Add Charge
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -2319,7 +2313,9 @@ function MiscChargesView({ students }: { students: any[] }) {
               </div>
             }
           />
-          {filteredCharges.length === 0 ? (
+          {chargesLoading ? (
+            <SkeletonTable rows={5} />
+          ) : filteredCharges.length === 0 ? (
             <EmptyState
               icon={DollarSign}
               title={charges.length === 0 ? 'No misc charges yet' : 'No matching charges'}
@@ -2369,7 +2365,7 @@ function MiscChargesView({ students }: { students: any[] }) {
                         {fmtMoney(c.amount)}
                       </TableCell>
                       <TableCell className="text-sm text-gray-500 max-w-xs truncate">
-                        {c.desc || '—'}
+                        {c.description || c.desc || '—'}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -2392,6 +2388,7 @@ function MiscChargesView({ students }: { students: any[] }) {
     </div>
   );
 }
+
 
 // ───────────────────────── 7. Create Logins (Student + Teacher) ─────────────────────────
 

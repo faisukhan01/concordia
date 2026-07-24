@@ -115,9 +115,7 @@ export const ROLE_MODULES: RoleModules = {
     ]},
     { group: 'Accountant', items: [
       { id: 'accountant:accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: PRIMARY },
-      { id: 'accountant:accountant-collect', name: 'Collect Payment', icon: CreditCard, color: PRIMARY },
-      { id: 'accountant:accountant-challans', name: 'Fee Challans', icon: Receipt, color: SECONDARY },
-      { id: 'accountant:accountant-installments', name: 'Installments', icon: ClipboardList, color: SECONDARY },
+      { id: 'accountant:accountant-challans', name: 'Fee & Installments', icon: Receipt, color: PRIMARY },
       { id: 'accountant:accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
       { id: 'accountant:accountant-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
     ]},
@@ -161,9 +159,7 @@ export const ROLE_MODULES: RoleModules = {
     { group: 'Finance', items: [
       { id: 'accountant-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
       { id: 'accountant-students', name: 'Students (Class-wise)', icon: GraduationCap, color: PRIMARY },
-      { id: 'accountant-collect', name: 'Collect Payment', icon: CreditCard, color: PRIMARY },
-      { id: 'accountant-challans', name: 'Fee Challans', icon: Receipt, color: SECONDARY },
-      { id: 'accountant-installments', name: 'Installments', icon: ClipboardList, color: SECONDARY },
+      { id: 'accountant-challans', name: 'Fee & Installments', icon: Receipt, color: PRIMARY },
       { id: 'accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
       { id: 'accountant-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
     ]},

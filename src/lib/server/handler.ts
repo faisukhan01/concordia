@@ -1818,6 +1818,87 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       });
     }
 
+    // ===================== INSTALLMENTS (split locked base fee) =====================
+    // Accountant splits the locked base fee into N installments; each
+    // installment becomes a fee_invoice row with type='Installment' and a
+    // dueDate. Replaces any existing installment plan for the student.
+    if (method === 'POST' && path === 'fee-invoices/installments') {
+      const user = await requireAuth(req);
+      requireRole(user, 'branch-manager', 'institute-admin');
+      const { studentId, installments } = body || {};
+      if (!studentId) return NextResponse.json({ error: 'studentId required' }, { status: 400 });
+      if (!Array.isArray(installments) || installments.length === 0) {
+        return NextResponse.json({ error: 'installments array required' }, { status: 400 });
+      }
+      const stuR = await db.execute({ sql: 'SELECT id, name, class, branchId, instituteId, baseFee, baseFeeLocked FROM users WHERE id = ?', args: [studentId] });
+      if (stuR.rows.length === 0) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      const student = stuR.rows[0] as any;
+      const brId = student.branchId || user.branchId;
+      // Delete any existing installment invoices for this student (resplit)
+      await db.execute({ sql: "DELETE FROM fee_invoices WHERE studentId = ? AND type = 'Installment'", args: [studentId] });
+      let created = 0;
+      const now = new Date();
+      for (const inst of installments) {
+        const amount = Number(inst.amount);
+        const dueDate = inst.dueDate || null;
+        if (!amount || amount <= 0) continue;
+        const id = nextId('INV');
+        const challanNo = 'CH-INST-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(created + 1).padStart(4, '0');
+        const d = dueDate ? new Date(dueDate) : now;
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = monthNames[d.getMonth()] || 'January';
+        const year = d.getFullYear();
+        await db.execute({
+          sql: `INSERT INTO fee_invoices (id, studentId, studentName, className, branchId, instituteId, month, year, amount, type, status, challanNo, dueDate)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [id, student.id, student.name || '', student.class || '', brId, student.instituteId, month, year, amount, 'Installment', 'Unpaid', challanNo, dueDate],
+        });
+        created++;
+      }
+      return NextResponse.json({ success: true, created, message: `${created} installments created for ${student.name}` });
+    }
+
+    // ===================== MISC CHARGES (one-off fees) =====================
+    if (method === 'GET' && path === 'misc-charges') {
+      const user = await requireAuth(req);
+      const { branchId, studentId } = query;
+      let sql = 'SELECT * FROM misc_charges WHERE 1=1';
+      const args: any[] = [];
+      if (studentId) { sql += ' AND studentId = ?'; args.push(studentId); }
+      else if (branchId) { sql += ' AND branchId = ?'; args.push(branchId); }
+      else if (user.branchId) { sql += ' AND branchId = ?'; args.push(user.branchId); }
+      sql += ' ORDER BY createdAt DESC LIMIT 500';
+      const r = await db.execute({ sql, args });
+      return NextResponse.json(r.rows);
+    }
+
+    if (method === 'POST' && path === 'misc-charges') {
+      const user = await requireAuth(req);
+      requireRole(user, 'branch-manager', 'institute-admin');
+      const { studentId, type, amount, description } = body || {};
+      if (!studentId) return NextResponse.json({ error: 'studentId required' }, { status: 400 });
+      if (!type) return NextResponse.json({ error: 'type required' }, { status: 400 });
+      const v = Number(amount);
+      if (!amount || isNaN(v) || v <= 0) return NextResponse.json({ error: 'valid amount required' }, { status: 400 });
+      const stuR = await db.execute({ sql: 'SELECT id, name, branchId, instituteId FROM users WHERE id = ?', args: [studentId] });
+      if (stuR.rows.length === 0) return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+      const student = stuR.rows[0] as any;
+      const id = nextId('MC');
+      await db.execute({
+        sql: 'INSERT INTO misc_charges (id, studentId, studentName, branchId, instituteId, type, amount, description, createdBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [id, studentId, student.name || '', student.branchId || user.branchId, student.instituteId, type, v, description || '', user.id],
+      });
+      return NextResponse.json({ success: true, id, studentName: student.name, type, amount: v, description: description || '', createdAt: new Date().toISOString() }, { status: 201 });
+    }
+
+    if (method === 'DELETE' && pathSegments[0] === 'misc-charges') {
+      const user = await requireAuth(req);
+      requireRole(user, 'branch-manager', 'institute-admin');
+      const id = pathSegments[1];
+      await db.execute({ sql: 'DELETE FROM misc_charges WHERE id = ?', args: [id] });
+      return NextResponse.json({ success: true });
+    }
+
     // ===================== DIARY (Teacher homework + notes) =====================
     if (method === 'GET' && path === 'diary') {
       const user = await requireAuth(req);

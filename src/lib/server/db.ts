@@ -95,6 +95,19 @@ export async function initDB() {
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN program TEXT', args: [] }); } catch {}
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN photoUrl TEXT', args: [] }); } catch {}
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN guardianPhone TEXT', args: [] }); } catch {}
+
+  // === Column migrations for installment-based fee invoices ===
+  // Accountant splits the locked base fee into 3–5 installments; each
+  // installment becomes a fee_invoice row with type='Installment' and a
+  // dueDate (separate from the month/year period used for monthly tuition).
+  try { await db.execute({ sql: 'ALTER TABLE fee_invoices ADD COLUMN dueDate TEXT', args: [] }); } catch {}
+
+  // === Misc charges table — persists one-off fees (admission, exam, trip, custom) ===
+  try {
+    await db.execute({
+      sql: `CREATE TABLE IF NOT EXISTS misc_charges (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, studentName TEXT, branchId TEXT, instituteId TEXT, type TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, description TEXT, createdBy TEXT, createdAt TEXT DEFAULT (datetime('now')))`,
+    });
+  } catch {}
   } // end schema init block
 
   // === Data seeding — runs on EVERY call (idempotent, cheap SELECT-then-INSERT) ===
