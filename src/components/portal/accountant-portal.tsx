@@ -81,6 +81,11 @@ import {
   Printer,
   ArrowLeft,
   X,
+  Pencil,
+  Unlock,
+  ShieldAlert,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -316,6 +321,20 @@ const btnPrimary =
   'bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60';
 const btnSecondary =
   'border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors';
+
+// Whether a user (student or teacher) is currently blocked. The backend
+// returns `blocked` as 0/1 or as a boolean — accept both.
+const isBlocked = (u: any) => u?.blocked === 1 || u?.blocked === true;
+
+// Small "Blocked" pill — rose tint, matches StatusBadge styling.
+function BlockedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-rose-100 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+      <ShieldAlert className="h-3 w-3" />
+      Blocked
+    </span>
+  );
+}
 
 // ───────────────────────── Constants ─────────────────────────
 
@@ -787,7 +806,9 @@ function StudentsView({
       return (
         s.name?.toLowerCase().includes(q) ||
         s.rollNo?.toLowerCase().includes(q) ||
-        s.fatherName?.toLowerCase().includes(q)
+        s.fatherName?.toLowerCase().includes(q) ||
+        s.guardian?.toLowerCase().includes(q) ||
+        s.guardianPhone?.toLowerCase().includes(q)
       );
     });
   }, [students, search, classFilter]);
@@ -828,7 +849,7 @@ function StudentsView({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, roll #, or father's name…"
+              placeholder="Search by name, roll #, father / guardian, or contact…"
               className={`${inputCls} pl-9`}
             />
           </div>
@@ -874,6 +895,12 @@ function StudentsView({
                     Name
                   </TableHead>
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Father / Guardian
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Contact
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
                     Class
                   </TableHead>
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
@@ -907,6 +934,12 @@ function StudentsView({
                       </TableCell>
                       <TableCell className="text-sm font-medium text-gray-900">
                         {s.name}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-700">
+                        {s.guardian || s.fatherName || '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-700 tabular-nums">
+                        {s.guardianPhone || '—'}
                       </TableCell>
                       <TableCell className="text-sm text-gray-700">
                         {s.class || '—'}
@@ -984,7 +1017,11 @@ function StudentFeeSheet({
             <Row label="Roll Number" value={student.rollNo || '—'} mono />
             <Row label="Class" value={`${student.class || '—'}${student.section ? ' · ' + student.section : ''}`} />
             <Row label="Program" value={student.program || '—'} />
-            <Row label="Father / Guardian" value={student.fatherName || student.guardian || '—'} />
+            <Row label="Father / Guardian" value={student.guardian || student.fatherName || '—'} />
+            {student.guardianPhone ? (
+              <Row label="Father / Guardian Contact" value={student.guardianPhone} mono />
+            ) : null}
+            {student.cnic ? <Row label="CNIC" value={student.cnic} mono /> : null}
             <Row
               label="Base Fee (locked)"
               value={student.baseFee ? fmtMoney(Number(student.baseFee)) : 'Not set'}
@@ -2396,6 +2433,50 @@ function LoginsView({
   const [suggestedLoaded, setSuggestedLoaded] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
+  // --- Student edit + block state (Task 15) ---
+  // The accountant can edit a student's portal details (name, roll #,
+  // email, password, class, section, guardian, contact, CNIC) and can
+  // block / unblock a student's login from the Student Logins tab.
+  const [editStudent, setEditStudent] = useState<any | null>(null);
+  const [studentForm, setStudentForm] = useState({
+    name: '',
+    rollNo: '',
+    email: '',
+    password: '',
+    class: '',
+    section: '',
+    guardian: '',
+    guardianPhone: '',
+    cnic: '',
+  });
+  const [revealStudentPw, setRevealStudentPw] = useState(false);
+  const [studentPwLoading, setStudentPwLoading] = useState(false);
+  const [savingStudent, setSavingStudent] = useState(false);
+  const [blockingStudentId, setBlockingStudentId] = useState('');
+
+  // --- Teacher manage-existing state (Task 15) ---
+  // Below the creation form, the Teacher Logins tab lists every existing
+  // teacher in the branch so the accountant can edit or block them.
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [teachersLoading, setTeachersLoading] = useState(false);
+  const [teachersSearch, setTeachersSearch] = useState('');
+  const [editingTeacher, setEditingTeacher] = useState<any | null>(null);
+  const [teacherEditForm, setTeacherEditForm] = useState({
+    name: '',
+    rollNo: '',
+    email: '',
+    password: '',
+    title: '',
+    subjects: [] as string[],
+    subjectInput: '',
+    classes: [] as string[],
+    classInput: '',
+  });
+  const [revealTeacherPw, setRevealTeacherPw] = useState(false);
+  const [teacherPwLoading, setTeacherPwLoading] = useState(false);
+  const [savingTeacher, setSavingTeacher] = useState(false);
+  const [blockingTeacherId, setBlockingTeacherId] = useState('');
+
   // Lazy-load suggested subjects the first time the Teacher tab is opened.
   // Falls back to the hardcoded DEFAULT_SUBJECTS list if the API fails or
   // returns nothing.
@@ -2420,6 +2501,44 @@ function LoginsView({
       cancelled = true;
     };
   }, [tab, suggestedLoaded]);
+
+  // Fetch the list of existing teachers (role=teacher, scoped to the
+  // accountant's branch) whenever the Teacher tab is opened. The list is
+  // re-fetched after every create / edit / block so the accountant sees
+  // the latest state.
+  const loadTeachers = () => {
+    setTeachersLoading(true);
+    api
+      .platformUsers({ role: 'teacher', branchId: user?.branchId })
+      .then((r) => setTeachers(Array.isArray(r) ? r : []))
+      .catch(() => setTeachers([]))
+      .finally(() => setTeachersLoading(false));
+  };
+  useEffect(() => {
+    if (tab !== 'teacher') return;
+    loadTeachers();
+  }, [tab]);
+
+  const filteredTeachers = useMemo(() => {
+    const q = teachersSearch.trim().toLowerCase();
+    if (!q) return teachers;
+    return teachers.filter((t) => {
+      let subjects: string[] = [];
+      try {
+        subjects = Array.isArray(t.subjects)
+          ? t.subjects
+          : JSON.parse(t.subjects || '[]');
+        if (!Array.isArray(subjects)) subjects = [];
+      } catch {
+        subjects = [];
+      }
+      return (
+        t.name?.toLowerCase().includes(q) ||
+        t.rollNo?.toLowerCase().includes(q) ||
+        subjects.some((s) => s.toLowerCase().includes(q))
+      );
+    });
+  }, [teachers, teachersSearch]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2575,6 +2694,9 @@ function LoginsView({
         subjects: [],
         subjectInput: '',
       });
+      // Refresh the "Manage Existing Teachers" list so the new teacher
+      // appears immediately without a manual Refresh click.
+      loadTeachers();
       toast({
         title: 'Teacher login created',
         description: `${form.name} — username ${form.rollNo}`,
@@ -2594,6 +2716,334 @@ function LoginsView({
     setCreated(null);
     // Defer focus until after the Sheet's close animation + focus-restore.
     setTimeout(() => nameRef.current?.focus(), 300);
+  };
+
+  // ─── Student edit + block helpers (Task 15) ───
+
+  const openEditStudent = (s: any) => {
+    setEditStudent(s);
+    setRevealStudentPw(false);
+    setStudentForm({
+      name: s.name || '',
+      rollNo: s.rollNo || '',
+      email: s.email || '',
+      password: '',
+      class: s.class || '',
+      section: s.section || '',
+      guardian: s.guardian || s.fatherName || '',
+      guardianPhone: s.guardianPhone || '',
+      cnic: s.cnic || '',
+    });
+  };
+
+  // Reveal / hide the student's current password. Tapping "Reveal" calls the
+  // backend password endpoint; tapping again just hides the field locally.
+  const revealStudentPassword = async () => {
+    if (!editStudent) return;
+    if (revealStudentPw) {
+      setRevealStudentPw(false);
+      return;
+    }
+    setStudentPwLoading(true);
+    try {
+      const r = await api.getUserPassword(editStudent.id);
+      setStudentForm((prev) => ({ ...prev, password: r?.password || '' }));
+      setRevealStudentPw(true);
+    } catch (e: any) {
+      toast({
+        title: 'Could not fetch password',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setStudentPwLoading(false);
+    }
+  };
+
+  const saveStudent = async () => {
+    if (!editStudent) return;
+    if (!studentForm.name || !studentForm.rollNo) {
+      toast({ title: 'Name and Roll No are required', variant: 'destructive' });
+      return;
+    }
+    setSavingStudent(true);
+    try {
+      const body: any = {
+        name: studentForm.name,
+        rollNo: studentForm.rollNo,
+        email: studentForm.email,
+        class: studentForm.class,
+        section: studentForm.section,
+        guardian: studentForm.guardian,
+        guardianPhone: studentForm.guardianPhone,
+        cnic: studentForm.cnic,
+      };
+      // Only send a new password when the accountant actually typed one —
+      // leaving the field blank keeps the existing password intact.
+      if (studentForm.password) body.password = studentForm.password;
+      await api.editUser(editStudent.id, body);
+      onUpdate({ id: editStudent.id, ...body });
+      toast({
+        title: 'Student updated',
+        description: `${studentForm.name} — changes saved.`,
+      });
+      setEditStudent(null);
+    } catch (e: any) {
+      toast({
+        title: 'Could not save changes',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingStudent(false);
+    }
+  };
+
+  const toggleStudentBlock = async (s: any) => {
+    const blocked = isBlocked(s);
+    if (!blocked) {
+      const ok = window.confirm(
+        `Block ${s.name}? They will be signed out and unable to log in until unblocked.`,
+      );
+      if (!ok) return;
+    }
+    setBlockingStudentId(s.id);
+    try {
+      await api.blockUser(s.id, !blocked);
+      onUpdate({ id: s.id, blocked: blocked ? 0 : 1 });
+      toast({
+        title: blocked ? 'Student unblocked' : 'Student blocked',
+        description: blocked
+          ? `${s.name} can now sign in again.`
+          : `${s.name} has been signed out.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Could not update block status',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBlockingStudentId('');
+    }
+  };
+
+  // ─── Teacher edit + block helpers (Task 15) ───
+
+  const openEditTeacher = (t: any) => {
+    setEditingTeacher(t);
+    setRevealTeacherPw(false);
+    // Teacher rows store subjects / classes as JSON strings — parse them
+    // back into arrays so the chip inputs can render them.
+    let subjects: string[] = [];
+    try {
+      subjects = Array.isArray(t.subjects) ? t.subjects : JSON.parse(t.subjects || '[]');
+      if (!Array.isArray(subjects)) subjects = [];
+    } catch {
+      subjects = [];
+    }
+    let classes: string[] = [];
+    try {
+      classes = Array.isArray(t.classes) ? t.classes : JSON.parse(t.classes || '[]');
+      if (!Array.isArray(classes)) classes = [];
+    } catch {
+      classes = [];
+    }
+    setTeacherEditForm({
+      name: t.name || '',
+      rollNo: t.rollNo || '',
+      email: t.email || '',
+      password: '',
+      title: t.title || '',
+      subjects,
+      subjectInput: '',
+      classes,
+      classInput: '',
+    });
+  };
+
+  const revealTeacherPassword = async () => {
+    if (!editingTeacher) return;
+    if (revealTeacherPw) {
+      setRevealTeacherPw(false);
+      return;
+    }
+    setTeacherPwLoading(true);
+    try {
+      const r = await api.getUserPassword(editingTeacher.id);
+      setTeacherEditForm((prev) => ({ ...prev, password: r?.password || '' }));
+      setRevealTeacherPw(true);
+    } catch (e: any) {
+      toast({
+        title: 'Could not fetch password',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTeacherPwLoading(false);
+    }
+  };
+
+  // Chip-input helpers for the teacher edit form — mirror the ones used by
+  // the teacher creation form so the UX is identical.
+  const addEditSubject = (raw: string) => {
+    const parts = raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
+    setTeacherEditForm((prev) => {
+      const merged = [...prev.subjects];
+      for (const p of parts) {
+        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
+      }
+      return { ...prev, subjects: merged, subjectInput: '' };
+    });
+  };
+  const removeEditSubject = (s: string) => {
+    setTeacherEditForm((prev) => ({ ...prev, subjects: prev.subjects.filter((x) => x !== s) }));
+  };
+  const onEditSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addEditSubject((e.target as HTMLInputElement).value);
+    } else if (
+      e.key === 'Backspace' &&
+      teacherEditForm.subjectInput === '' &&
+      teacherEditForm.subjects.length > 0
+    ) {
+      setTeacherEditForm((prev) => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
+    }
+  };
+
+  const addEditClass = (raw: string) => {
+    const parts = raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
+    setTeacherEditForm((prev) => {
+      const merged = [...prev.classes];
+      for (const p of parts) {
+        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
+      }
+      return { ...prev, classes: merged, classInput: '' };
+    });
+  };
+  const removeEditClass = (s: string) => {
+    setTeacherEditForm((prev) => ({ ...prev, classes: prev.classes.filter((x) => x !== s) }));
+  };
+  const onEditClassKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addEditClass((e.target as HTMLInputElement).value);
+    } else if (
+      e.key === 'Backspace' &&
+      teacherEditForm.classInput === '' &&
+      teacherEditForm.classes.length > 0
+    ) {
+      setTeacherEditForm((prev) => ({ ...prev, classes: prev.classes.slice(0, -1) }));
+    }
+  };
+
+  const saveTeacher = async () => {
+    if (!editingTeacher) return;
+    if (!teacherEditForm.name || !teacherEditForm.rollNo) {
+      toast({ title: 'Name and Teacher ID are required', variant: 'destructive' });
+      return;
+    }
+    setSavingTeacher(true);
+    try {
+      // Flush any un-committed chip text so it isn't lost on save.
+      let subjects = teacherEditForm.subjects;
+      if (teacherEditForm.subjectInput.trim()) {
+        const extra = teacherEditForm.subjectInput
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        subjects = [...teacherEditForm.subjects];
+        for (const p of extra) {
+          if (!subjects.some((s) => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
+        }
+      }
+      let classes = teacherEditForm.classes;
+      if (teacherEditForm.classInput.trim()) {
+        const extra = teacherEditForm.classInput
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        classes = [...teacherEditForm.classes];
+        for (const p of extra) {
+          if (!classes.some((s) => s.toLowerCase() === p.toLowerCase())) classes.push(p);
+        }
+      }
+      const body: any = {
+        name: teacherEditForm.name,
+        rollNo: teacherEditForm.rollNo,
+        email: teacherEditForm.email,
+        subjects,
+        classes,
+        title: teacherEditForm.title,
+      };
+      if (teacherEditForm.password) body.password = teacherEditForm.password;
+      await api.editUser(editingTeacher.id, body);
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.id === editingTeacher.id
+            ? {
+                ...t,
+                ...body,
+                subjects: JSON.stringify(subjects),
+                classes: JSON.stringify(classes),
+              }
+            : t,
+        ),
+      );
+      toast({
+        title: 'Teacher updated',
+        description: `${teacherEditForm.name} — changes saved.`,
+      });
+      setEditingTeacher(null);
+    } catch (e: any) {
+      toast({
+        title: 'Could not save changes',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingTeacher(false);
+    }
+  };
+
+  const toggleTeacherBlock = async (t: any) => {
+    const blocked = isBlocked(t);
+    if (!blocked) {
+      const ok = window.confirm(
+        `Block ${t.name}? They will be signed out and unable to log in until unblocked.`,
+      );
+      if (!ok) return;
+    }
+    setBlockingTeacherId(t.id);
+    try {
+      await api.blockUser(t.id, !blocked);
+      setTeachers((prev) =>
+        prev.map((x) => (x.id === t.id ? { ...x, blocked: blocked ? 0 : 1 } : x)),
+      );
+      toast({
+        title: blocked ? 'Teacher unblocked' : 'Teacher blocked',
+        description: blocked
+          ? `${t.name} can now sign in again.`
+          : `${t.name} has been signed out.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Could not update block status',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBlockingTeacherId('');
+    }
   };
 
   return (
@@ -2701,6 +3151,7 @@ function LoginsView({
                 {filtered.map((s) => {
                   const hasLogin = hasRealLogin(s);
                   const creds = generated[s.id];
+                  const blocked = isBlocked(s);
                   return (
                     <div
                       key={s.id}
@@ -2711,7 +3162,10 @@ function LoginsView({
                           <GraduationCap className="h-4 w-4 text-gray-400" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                            {blocked ? <BlockedBadge /> : null}
+                          </div>
                           <p className="text-[11px] text-gray-500 truncate">
                             {s.rollNo} · {s.class || '—'}
                             {s.section ? `-${s.section}` : ''}
@@ -2719,58 +3173,103 @@ function LoginsView({
                         </div>
                       </div>
 
-                      {creds ? (
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
-                            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
-                              Username
-                            </span>
-                            <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
-                              {creds.rollNo}
-                              <CopyButton text={creds.rollNo} />
-                            </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {creds ? (
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
+                              <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
+                                Username
+                              </span>
+                              <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
+                                {creds.rollNo}
+                                <CopyButton text={creds.rollNo} />
+                              </span>
+                            </div>
+                            <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
+                              <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
+                                Password
+                              </span>
+                              <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
+                                {creds.password}
+                                <CopyButton text={creds.password} />
+                              </span>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
+                            >
+                              <Check className="h-3 w-3" /> Login Ready
+                            </Badge>
                           </div>
-                          <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
-                            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
-                              Password
-                            </span>
-                            <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
-                              {creds.password}
-                              <CopyButton text={creds.password} />
-                            </span>
-                          </div>
+                        ) : hasLogin ? (
                           <Badge
                             variant="outline"
                             className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
                           >
-                            <Check className="h-3 w-3" /> Login Ready
+                            <Check className="h-3 w-3" /> Login Active
                           </Badge>
-                        </div>
-                      ) : hasLogin ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
-                        >
-                          <Check className="h-3 w-3" /> Login Active
-                        </Badge>
-                      ) : (
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-8 px-3 text-xs font-medium"
+                            onClick={() => generate(s)}
+                            disabled={creating === s.id}
+                          >
+                            {creating === s.id ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…
+                              </>
+                            ) : (
+                              <>
+                                <KeyRound className="h-3.5 w-3.5 mr-1" /> Generate Login
+                              </>
+                            )}
+                          </Button>
+                        )}
+
+                        {/* Edit portal details */}
                         <Button
                           size="sm"
-                          className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-8 px-3 text-xs font-medium"
-                          onClick={() => generate(s)}
-                          disabled={creating === s.id}
+                          variant="outline"
+                          className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-8 px-3 text-xs font-medium"
+                          onClick={() => openEditStudent(s)}
                         >
-                          {creating === s.id ? (
-                            <>
-                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…
-                            </>
-                          ) : (
-                            <>
-                              <KeyRound className="h-3.5 w-3.5 mr-1" /> Generate Login
-                            </>
-                          )}
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
                         </Button>
-                      )}
+
+                        {/* Block / Unblock login */}
+                        {blocked ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border border-emerald-100 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg h-8 px-3 text-xs font-medium"
+                            onClick={() => toggleStudentBlock(s)}
+                            disabled={blockingStudentId === s.id}
+                          >
+                            {blockingStudentId === s.id ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Unblock
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border border-rose-100 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg h-8 px-3 text-xs font-medium"
+                            onClick={() => toggleStudentBlock(s)}
+                            disabled={blockingStudentId === s.id}
+                          >
+                            {blockingStudentId === s.id ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Block
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -2939,6 +3438,151 @@ function LoginsView({
               </button>
             </div>
           </div>
+
+          {/* ===== Manage Existing Teachers (Task 15) ===== */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <SectionHeader
+              title="Manage Existing Teachers"
+              desc="Edit portal details or block / unblock any teacher in your branch."
+              action={
+                <button
+                  onClick={loadTeachers}
+                  disabled={teachersLoading}
+                  className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-[#F26522] font-medium disabled:opacity-60"
+                >
+                  <Loader2 className={cn('h-3.5 w-3.5', teachersLoading && 'animate-spin')} />
+                  Refresh
+                </button>
+              }
+            />
+
+            {/* Search */}
+            <div className="relative mb-4">
+              <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input
+                value={teachersSearch}
+                onChange={(e) => setTeachersSearch(e.target.value)}
+                placeholder="Search by name, Teacher ID, or subject…"
+                className={`${inputCls} pl-9`}
+              />
+            </div>
+
+            {teachersLoading && teachers.length === 0 ? (
+              <SkeletonTable rows={4} />
+            ) : teachers.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No teachers found"
+                desc="Create a new teacher login above — it will appear here once created."
+              />
+            ) : filteredTeachers.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title="No matching teachers"
+                desc="Try a different search term."
+              />
+            ) : (
+              <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
+                {filteredTeachers.map((t) => {
+                  const blocked = isBlocked(t);
+                  let subjects: string[] = [];
+                  try {
+                    subjects = Array.isArray(t.subjects)
+                      ? t.subjects
+                      : JSON.parse(t.subjects || '[]');
+                    if (!Array.isArray(subjects)) subjects = [];
+                  } catch {
+                    subjects = [];
+                  }
+                  let classes: string[] = [];
+                  try {
+                    classes = Array.isArray(t.classes)
+                      ? t.classes
+                      : JSON.parse(t.classes || '[]');
+                    if (!Array.isArray(classes)) classes = [];
+                  } catch {
+                    classes = [];
+                  }
+                  return (
+                    <div
+                      key={t.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg border border-gray-200 bg-gray-50 grid place-items-center shrink-0">
+                          <Users className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {t.name}
+                            </p>
+                            {blocked ? (
+                              <BlockedBadge />
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                <Check className="h-3 w-3" /> Active
+                              </span>
+                            )}
+                            {t.title ? (
+                              <span className="text-[11px] text-gray-500">{t.title}</span>
+                            ) : null}
+                          </div>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {t.rollNo || '—'}
+                            {subjects.length > 0 ? ` · ${subjects.join(', ')}` : ''}
+                            {classes.length > 0 ? ` · ${classes.join(', ')}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-8 px-3 text-xs font-medium"
+                          onClick={() => openEditTeacher(t)}
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                        </Button>
+                        {blocked ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border border-emerald-100 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg h-8 px-3 text-xs font-medium"
+                            onClick={() => toggleTeacherBlock(t)}
+                            disabled={blockingTeacherId === t.id}
+                          >
+                            {blockingTeacherId === t.id ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Unlock className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Unblock
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border border-rose-100 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg h-8 px-3 text-xs font-medium"
+                            onClick={() => toggleTeacherBlock(t)}
+                            disabled={blockingTeacherId === t.id}
+                          >
+                            {blockingTeacherId === t.id ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Block
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -2991,6 +3635,350 @@ function LoginsView({
               </button>
             </div>
           </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ===== Student Edit Sheet (Task 15) ===== */}
+      <Sheet
+        open={!!editStudent}
+        onOpenChange={(o) => !o && setEditStudent(null)}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto bg-white">
+          <SheetHeader>
+            <SheetTitle className="text-base font-semibold text-gray-900">
+              Edit Student Portal
+            </SheetTitle>
+            <SheetDescription className="text-sm text-gray-500">
+              Update name, roll number, credentials, and contact details.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-4 pb-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <Input
+                  value={studentForm.name}
+                  onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })}
+                  className={inputCls}
+                  placeholder="Student name"
+                />
+              </Field>
+              <Field label="Roll Number" required>
+                <Input
+                  value={studentForm.rollNo}
+                  onChange={(e) => setStudentForm({ ...studentForm, rollNo: e.target.value })}
+                  className={inputCls}
+                  placeholder="e.g. 10-A-001"
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  value={studentForm.email}
+                  onChange={(e) => setStudentForm({ ...studentForm, email: e.target.value })}
+                  className={inputCls}
+                  placeholder="username@concordia.edu.pk"
+                />
+              </Field>
+              <Field label="Password">
+                <div className="relative">
+                  <Input
+                    type={revealStudentPw ? 'text' : 'password'}
+                    value={studentForm.password}
+                    onChange={(e) =>
+                      setStudentForm({ ...studentForm, password: e.target.value })
+                    }
+                    className={`${inputCls} pr-24`}
+                    placeholder="Leave blank to keep current"
+                  />
+                  <button
+                    type="button"
+                    onClick={revealStudentPassword}
+                    disabled={studentPwLoading}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium text-gray-500 hover:text-[#F26522] rounded-md hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {studentPwLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : revealStudentPw ? (
+                      <EyeOff className="h-3 w-3" />
+                    ) : (
+                      <Eye className="h-3 w-3" />
+                    )}
+                    {revealStudentPw ? 'Hide' : 'Reveal'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1.5">
+                  Tap Reveal to fetch the current password from the server.
+                </p>
+              </Field>
+              <Field label="Class">
+                <Input
+                  value={studentForm.class}
+                  onChange={(e) => setStudentForm({ ...studentForm, class: e.target.value })}
+                  className={inputCls}
+                  placeholder="e.g. Grade 10"
+                />
+              </Field>
+              <Field label="Section">
+                <Input
+                  value={studentForm.section}
+                  onChange={(e) => setStudentForm({ ...studentForm, section: e.target.value })}
+                  className={inputCls}
+                  placeholder="e.g. A"
+                />
+              </Field>
+              <Field label="Father / Guardian">
+                <Input
+                  value={studentForm.guardian}
+                  onChange={(e) => setStudentForm({ ...studentForm, guardian: e.target.value })}
+                  className={inputCls}
+                  placeholder="Father or guardian name"
+                />
+              </Field>
+              <Field label="Contact">
+                <Input
+                  value={studentForm.guardianPhone}
+                  onChange={(e) =>
+                    setStudentForm({ ...studentForm, guardianPhone: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="03xx-xxxxxxx"
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="CNIC">
+                  <Input
+                    value={studentForm.cnic}
+                    onChange={(e) => setStudentForm({ ...studentForm, cnic: e.target.value })}
+                    className={inputCls}
+                    placeholder="xxxxx-xxxxxxx-x"
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
+
+          <SheetFooter>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <button
+                onClick={() => setEditStudent(null)}
+                className={cn(btnSecondary, 'justify-center h-10')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveStudent}
+                disabled={savingStudent}
+                className={cn(btnPrimary, 'justify-center h-10')}
+              >
+                {savingStudent ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                Save Changes
+              </button>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* ===== Teacher Edit Sheet (Task 15) ===== */}
+      <Sheet
+        open={!!editingTeacher}
+        onOpenChange={(o) => !o && setEditingTeacher(null)}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto bg-white">
+          <SheetHeader>
+            <SheetTitle className="text-base font-semibold text-gray-900">
+              Edit Teacher Portal
+            </SheetTitle>
+            <SheetDescription className="text-sm text-gray-500">
+              Update name, Teacher ID, credentials, subjects, and classes.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-4 pb-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <Input
+                  value={teacherEditForm.name}
+                  onChange={(e) =>
+                    setTeacherEditForm({ ...teacherEditForm, name: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="Teacher name"
+                />
+              </Field>
+              <Field label="Teacher ID / Roll No" required>
+                <Input
+                  value={teacherEditForm.rollNo}
+                  onChange={(e) =>
+                    setTeacherEditForm({ ...teacherEditForm, rollNo: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="e.g. T001"
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  value={teacherEditForm.email}
+                  onChange={(e) =>
+                    setTeacherEditForm({ ...teacherEditForm, email: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="username@concordia.edu.pk"
+                />
+              </Field>
+              <Field label="Password">
+                <div className="relative">
+                  <Input
+                    type={revealTeacherPw ? 'text' : 'password'}
+                    value={teacherEditForm.password}
+                    onChange={(e) =>
+                      setTeacherEditForm({ ...teacherEditForm, password: e.target.value })
+                    }
+                    className={`${inputCls} pr-24`}
+                    placeholder="Leave blank to keep current"
+                  />
+                  <button
+                    type="button"
+                    onClick={revealTeacherPassword}
+                    disabled={teacherPwLoading}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium text-gray-500 hover:text-[#F26522] rounded-md hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {teacherPwLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : revealTeacherPw ? (
+                      <EyeOff className="h-3 w-3" />
+                    ) : (
+                      <Eye className="h-3 w-3" />
+                    )}
+                    {revealTeacherPw ? 'Hide' : 'Reveal'}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1.5">
+                  Tap Reveal to fetch the current password from the server.
+                </p>
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Title">
+                  <Input
+                    value={teacherEditForm.title}
+                    onChange={(e) =>
+                      setTeacherEditForm({ ...teacherEditForm, title: e.target.value })
+                    }
+                    className={inputCls}
+                    placeholder="e.g. Senior Teacher"
+                  />
+                </Field>
+              </div>
+
+              <div className="sm:col-span-2">
+                <Field label="Subjects">
+                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
+                    {teacherEditForm.subjects.map((s) => (
+                      <Badge
+                        key={s}
+                        variant="secondary"
+                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
+                      >
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() => removeEditSubject(s)}
+                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                          aria-label={`Remove ${s}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    <input
+                      value={teacherEditForm.subjectInput}
+                      onChange={(e) =>
+                        setTeacherEditForm((prev) => ({ ...prev, subjectInput: e.target.value }))
+                      }
+                      onKeyDown={onEditSubjectKeyDown}
+                      onBlur={(e) => addEditSubject(e.target.value)}
+                      placeholder={
+                        teacherEditForm.subjects.length === 0
+                          ? 'Type a subject and press Enter'
+                          : ''
+                      }
+                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Press Enter or comma to add a subject.
+                  </p>
+                </Field>
+              </div>
+
+              <div className="sm:col-span-2">
+                <Field label="Classes">
+                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
+                    {teacherEditForm.classes.map((c) => (
+                      <Badge
+                        key={c}
+                        variant="secondary"
+                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
+                      >
+                        {c}
+                        <button
+                          type="button"
+                          onClick={() => removeEditClass(c)}
+                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                          aria-label={`Remove ${c}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    <input
+                      value={teacherEditForm.classInput}
+                      onChange={(e) =>
+                        setTeacherEditForm((prev) => ({ ...prev, classInput: e.target.value }))
+                      }
+                      onKeyDown={onEditClassKeyDown}
+                      onBlur={(e) => addEditClass(e.target.value)}
+                      placeholder={
+                        teacherEditForm.classes.length === 0
+                          ? 'Type a class and press Enter'
+                          : ''
+                      }
+                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Press Enter or comma to add a class.
+                  </p>
+                </Field>
+              </div>
+            </div>
+          </div>
+
+          <SheetFooter>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <button
+                onClick={() => setEditingTeacher(null)}
+                className={cn(btnSecondary, 'justify-center h-10')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveTeacher}
+                disabled={savingTeacher}
+                className={cn(btnPrimary, 'justify-center h-10')}
+              >
+                {savingTeacher ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                Save Changes
+              </button>
+            </div>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
     </div>

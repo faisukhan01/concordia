@@ -60,6 +60,7 @@ import {
   Users, GraduationCap, BookOpen, Calendar, FileText, Award,
   Megaphone, CalendarDays, ClipboardList, Loader2, Search, Copy, Check,
   Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye,
+  UserPlus, UserMinus, Trash2,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -577,12 +578,33 @@ function TimetableView({ user }: { user: any }) {
   const [classes, setClasses] = useState<any[]>([]);
   const [selClass, setSelClass] = useState('');
   const [entries, setEntries] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // New-entry form state
+  const [fDay, setFDay] = useState('Monday');
+  const [fPeriod, setFPeriod] = useState('1');
+  const [fSubject, setFSubject] = useState('');
+  const [fTeacherId, setFTeacherId] = useState('');
+  const [fStart, setFStart] = useState('08:00');
+  const [fEnd, setFEnd] = useState('08:45');
+  const [fRoom, setFRoom] = useState('');
+
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const byDay = (day: string) => entries.filter(e => e.day === day).sort((a, b) => (a.period || 0) - (b.period || 0));
+  const selClassObj = classes.find(c => c.id === selClass) || null;
 
   useEffect(() => {
-    api.getClasses(user?.branchId).then(d => {
-      setClasses(Array.isArray(d) ? d : []);
-      if (d && d[0]) setSelClass(d[0].id);
+    Promise.all([
+      api.getClasses(user?.branchId).catch(() => []),
+      api.platformUsers({ role: 'teacher', branchId: user?.branchId }).catch(() => []),
+    ]).then(([c, t]) => {
+      setClasses(Array.isArray(c) ? c : []);
+      setTeachers(Array.isArray(t) ? t : []);
+      if (c && c[0]) setSelClass(c[0].id);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [user?.branchId]);
@@ -590,6 +612,7 @@ function TimetableView({ user }: { user: any }) {
   useEffect(() => {
     if (!selClass) return;
     let cancelled = false;
+    setLoading(true);
     api.getTimetable({ classId: selClass }).then(d => {
       if (cancelled) return;
       setEntries(Array.isArray(d) ? d : []);
@@ -598,14 +621,93 @@ function TimetableView({ user }: { user: any }) {
     return () => { cancelled = true; };
   }, [selClass]);
 
-  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const byDay = (day: string) => entries.filter(e => e.day === day).sort((a, b) => (a.period || 0) - (b.period || 0));
+  const reloadEntries = useCallback(() => {
+    if (!selClass) { setEntries([]); return; }
+    api.getTimetable({ classId: selClass })
+      .then(d => setEntries(Array.isArray(d) ? d : []))
+      .catch(() => setEntries([]));
+  }, [selClass]);
+
+  const resetForm = () => {
+    setFDay('Monday');
+    setFPeriod('1');
+    setFSubject('');
+    setFTeacherId('');
+    setFStart('08:00');
+    setFEnd('08:45');
+    setFRoom('');
+  };
+
+  const saveEntry = async () => {
+    if (!selClass) { toast({ title: 'Select a class first', variant: 'destructive' }); return; }
+    const period = parseInt(fPeriod, 10);
+    if (!fDay || !Number.isFinite(period) || period < 1 || period > 12) {
+      toast({ title: 'Day and a valid Period (1–12) are required', variant: 'destructive' });
+      return;
+    }
+    if (!fSubject.trim()) {
+      toast({ title: 'Subject is required', variant: 'destructive' });
+      return;
+    }
+    const teacher = teachers.find(t => t.id === fTeacherId) || null;
+    setSaving(true);
+    try {
+      await api.saveTimetableEntry({
+        classId: selClass,
+        className: selClassObj?.name || '',
+        section: selClassObj?.section || '',
+        day: fDay,
+        period,
+        startTime: fStart,
+        endTime: fEnd,
+        subject: fSubject.trim(),
+        teacherId: teacher?.id || null,
+        teacherName: teacher?.name || '',
+        roomName: fRoom.trim(),
+      });
+      toast({ title: 'Timetable entry saved', description: `${fDay} • Period ${period} • ${fSubject.trim()}` });
+      resetForm();
+      setShowForm(false);
+      reloadEntries();
+    } catch (e: any) {
+      toast({ title: 'Failed to save entry', description: e?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeEntry = async (entry: any) => {
+    if (!entry?.id) return;
+    if (!confirm(`Delete ${entry.day} Period ${entry.period} — ${entry.subject || 'entry'}?`)) return;
+    setDeletingId(entry.id);
+    try {
+      await api.deleteTimetableEntry(entry.id);
+      toast({ title: 'Entry deleted' });
+      reloadEntries();
+    } catch (e: any) {
+      toast({ title: 'Failed to delete entry', description: e?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Timetable" subtitle="View and manage class timetables." />
+      <PageHeader
+        title="Timetable"
+        subtitle="Create and manage class timetables, assign teachers and rooms."
+        action={
+          <button
+            onClick={() => setShowForm(s => !s)}
+            disabled={!selClass}
+            className={btnPrimary}
+          >
+            <Plus className="h-4 w-4" /> {showForm ? 'Cancel' : 'Add Entry'}
+          </button>
+        }
+      />
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-xs font-semibold text-gray-700">Class:</span>
           <Select value={selClass} onValueChange={setSelClass}>
             <SelectTrigger className="w-[240px] h-9 rounded-lg border-gray-200"><SelectValue placeholder="Select class" /></SelectTrigger>
@@ -613,34 +715,124 @@ function TimetableView({ user }: { user: any }) {
               {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}{c.section ? ` — ${c.section}` : ''}</SelectItem>)}
             </SelectContent>
           </Select>
+          {selClassObj && (
+            <span className="text-xs text-gray-400">
+              {selClassObj.name}{selClassObj.section ? ` — Section ${selClassObj.section}` : ''}
+            </span>
+          )}
         </div>
-        {loading ? (
-          <SkeletonTable rows={4} />
-        ) : entries.length === 0 ? (
-          <EmptyState icon={Calendar} title="No timetable entries" desc="Timetable entries will appear here once created." />
+
+        {!selClass ? (
+          <EmptyState icon={Calendar} title="Select a class" desc="Pick a class above to view or manage its timetable." />
         ) : (
-          <div className="space-y-3">
-            {DAYS.map(day => {
-              const dayEntries = byDay(day);
-              if (dayEntries.length === 0) return null;
-              return (
-                <div key={day}>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{day}</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                    {dayEntries.map((e, i) => (
-                      <div key={i} className="rounded-lg border border-gray-200 bg-white p-3">
-                        <div className="text-xs text-gray-400">Period {e.period}</div>
-                        <div className="text-sm font-semibold text-gray-900 mt-0.5">{e.subject}</div>
-                        <div className="text-xs text-gray-500 mt-1">{e.startTime} — {e.endTime}</div>
-                        {e.teacherName && <div className="text-xs text-gray-400 mt-0.5">{e.teacherName}</div>}
-                        {e.roomName && <div className="text-xs text-gray-400">{e.roomName}</div>}
-                      </div>
-                    ))}
+          <>
+            {showForm && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50/40 p-4 mb-4">
+                <SectionHeader
+                  title="New Timetable Entry"
+                  desc="Saving the same Day + Period overwrites the existing entry for this class."
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Field label="Day" required>
+                    <Select value={fDay} onValueChange={setFDay}>
+                      <SelectTrigger className={cn(inputCls, 'h-10')}><SelectValue placeholder="Day" /></SelectTrigger>
+                      <SelectContent>
+                        {DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Period" required>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={fPeriod}
+                      onChange={e => setFPeriod(e.target.value)}
+                      className={inputCls}
+                      placeholder="1"
+                    />
+                  </Field>
+                  <Field label="Subject" required>
+                    <Input value={fSubject} onChange={e => setFSubject(e.target.value)} className={inputCls} placeholder="Mathematics" />
+                  </Field>
+                  <Field label="Teacher">
+                    <Select value={fTeacherId} onValueChange={setFTeacherId}>
+                      <SelectTrigger className={cn(inputCls, 'h-10')}><SelectValue placeholder="Optional" /></SelectTrigger>
+                      <SelectContent>
+                        {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}{t.rollNo ? ` • ${t.rollNo}` : ''}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Start Time">
+                    <Input type="time" value={fStart} onChange={e => setFStart(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="End Time">
+                    <Input type="time" value={fEnd} onChange={e => setFEnd(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="Room">
+                    <Input value={fRoom} onChange={e => setFRoom(e.target.value)} className={inputCls} placeholder="Room 101" />
+                  </Field>
+                  <div className="flex items-end gap-2">
+                    <button onClick={saveEntry} disabled={saving} className={btnPrimary + ' h-10 flex-1'}>
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Save Entry
+                    </button>
+                    <button onClick={() => { setShowForm(false); resetForm(); }} className={btnSecondary + ' h-10'}>
+                      Cancel
+                    </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
+
+            {loading ? (
+              <SkeletonTable rows={4} />
+            ) : entries.length === 0 ? (
+              <EmptyState
+                icon={Calendar}
+                title="No timetable entries"
+                desc="Add the first period for this class to build its weekly timetable."
+                action={
+                  !showForm ? (
+                    <button onClick={() => setShowForm(true)} className={btnPrimary}>
+                      <Plus className="h-4 w-4" /> Add Entry
+                    </button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {DAYS.map(day => {
+                  const dayEntries = byDay(day);
+                  if (dayEntries.length === 0) return null;
+                  return (
+                    <div key={day}>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">{day}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        {dayEntries.map((e, i) => (
+                          <div key={e.id || i} className="relative rounded-lg border border-gray-200 bg-white p-3 pr-9 hover:border-gray-300 transition-colors">
+                            <button
+                              onClick={() => removeEntry(e)}
+                              disabled={deletingId === e.id}
+                              aria-label="Delete entry"
+                              className="absolute top-2 right-2 h-6 w-6 inline-flex items-center justify-center text-gray-300 hover:text-rose-600 hover:bg-rose-50 rounded disabled:opacity-50"
+                            >
+                              {deletingId === e.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                            <div className="text-xs text-gray-400">Period {e.period}</div>
+                            <div className="text-sm font-semibold text-gray-900 mt-0.5">{e.subject || '—'}</div>
+                            <div className="text-xs text-gray-500 mt-1">{e.startTime} — {e.endTime}</div>
+                            {e.teacherName && <div className="text-xs text-gray-400 mt-0.5">{e.teacherName}</div>}
+                            {e.roomName && <div className="text-xs text-gray-400">{e.roomName}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1038,6 +1230,11 @@ function ClassesView({ user }: { user: any }) {
   const [detailClass, setDetailClass] = useState<ClassRow | null>(null);
   const [showAllStudents, setShowAllStudents] = useState(false);
 
+  // Teacher-assignment state for the class detail sheet
+  const [assignTeacherId, setAssignTeacherId] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [removingTeacherId, setRemovingTeacherId] = useState<string | null>(null);
+
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
@@ -1068,6 +1265,63 @@ function ClassesView({ user }: { user: any }) {
     const combinedSpace = `${cls.name} ${cls.section}`;
     return arr.some((c) => c === cls.name || c === combinedDash || c === combinedSpace);
   });
+
+  // Assign the currently-selected teacher (in the detail Sheet dropdown) to
+  // detailClass by appending the combined "Name-Section" form to their
+  // `classes` JSON array. Then reload + toast + reset.
+  const assignTeacher = async () => {
+    if (!detailClass) return;
+    if (!assignTeacherId) { toast({ title: 'Pick a teacher to assign', variant: 'destructive' }); return; }
+    const teacher = teachers.find((t) => t.id === assignTeacherId);
+    if (!teacher) return;
+    const current = parseTeacherField(teacher.classes);
+    const combinedDash = `${detailClass.name}-${detailClass.section}`;
+    const combinedSpace = `${detailClass.name} ${detailClass.section}`;
+    // De-dup against any existing form (name only, dashed, or spaced).
+    if (current.some((c) => c === detailClass.name || c === combinedDash || c === combinedSpace)) {
+      toast({ title: 'Teacher is already assigned to this class', variant: 'destructive' });
+      return;
+    }
+    const next = [...current, combinedDash];
+    setAssignSaving(true);
+    try {
+      await api.editUser(teacher.id, { classes: next });
+      toast({
+        title: 'Teacher assigned',
+        description: `${teacher.name} now teaches ${detailClass.name} — Section ${detailClass.section}`,
+      });
+      setAssignTeacherId('');
+      load();
+    } catch (e: any) {
+      toast({ title: 'Failed to assign teacher', description: e?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
+  // Unassign a teacher from detailClass by removing every matching form of
+  // the class identifier from their `classes` array.
+  const removeTeacher = async (teacher: any) => {
+    if (!detailClass || !teacher?.id) return;
+    if (!confirm(`Remove ${teacher.name} from ${detailClass.name} — Section ${detailClass.section}?`)) return;
+    const current = parseTeacherField(teacher.classes);
+    const combinedDash = `${detailClass.name}-${detailClass.section}`;
+    const combinedSpace = `${detailClass.name} ${detailClass.section}`;
+    const next = current.filter((c) => c !== detailClass.name && c !== combinedDash && c !== combinedSpace);
+    setRemovingTeacherId(teacher.id);
+    try {
+      await api.editUser(teacher.id, { classes: next });
+      toast({
+        title: 'Teacher removed',
+        description: `${teacher.name} unassigned from ${detailClass.name} — Section ${detailClass.section}`,
+      });
+      load();
+    } catch (e: any) {
+      toast({ title: 'Failed to remove teacher', description: e?.message || 'Please try again', variant: 'destructive' });
+    } finally {
+      setRemovingTeacherId(null);
+    }
+  };
 
   // Single-section submit (with optional capacity).
   const submit = async () => {
@@ -1321,7 +1575,7 @@ function ClassesView({ user }: { user: any }) {
                       <TableCell className="text-right">
                         <div className="inline-flex items-center gap-1">
                           <button
-                            onClick={() => { setDetailClass(c); setShowAllStudents(false); }}
+                            onClick={() => { setDetailClass(c); setShowAllStudents(false); setAssignTeacherId(''); }}
                             className="h-8 px-2 text-xs text-gray-600 hover:text-[#F26522] hover:bg-orange-50 rounded inline-flex items-center gap-1"
                           >
                             <Eye className="h-3.5 w-3.5" /> View
@@ -1435,23 +1689,74 @@ function ClassesView({ user }: { user: any }) {
                     {clsTeachers.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center">
                         <p className="text-xs text-gray-500 mb-1">No teachers assigned to this class yet.</p>
-                        <p className="text-[11px] text-gray-400">Teachers are assigned to classes via the Accountant &rsquo; s Create Logins page or by editing a teacher&rsquo;s class list from the Teachers module.</p>
+                        <p className="text-[11px] text-gray-400">Use the Assign Teacher control below to add one.</p>
                       </div>
                     ) : (
                       <div className="space-y-1">
                         {clsTeachers.map((t) => {
                           const subs = parseTeacherField(t.subjects);
                           return (
-                            <div key={t.id} className="rounded-md border border-gray-100 px-3 py-2 hover:bg-gray-50">
-                              <div className="text-sm font-medium text-gray-900">{t.name}</div>
-                              <div className="text-[11px] text-gray-500 mt-0.5">
-                                {subs.length > 0 ? subs.join(', ') : 'No subjects assigned'}
+                            <div key={t.id} className="flex items-center justify-between gap-2 rounded-md border border-gray-100 px-3 py-2 hover:bg-gray-50">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">{t.name}</div>
+                                <div className="text-[11px] text-gray-500 mt-0.5">
+                                  {subs.length > 0 ? subs.join(', ') : 'No subjects assigned'}
+                                  {t.rollNo ? ` • ${t.rollNo}` : ''}
+                                </div>
                               </div>
+                              <button
+                                onClick={() => removeTeacher(t)}
+                                disabled={removingTeacherId === t.id}
+                                className="shrink-0 h-7 px-2 text-[11px] font-medium text-gray-500 hover:text-rose-600 hover:bg-rose-50 border border-gray-200 rounded inline-flex items-center gap-1 disabled:opacity-60"
+                              >
+                                {removingTeacherId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserMinus className="h-3 w-3" />}
+                                Remove
+                              </button>
                             </div>
                           );
                         })}
                       </div>
                     )}
+
+                    {/* Assign new teacher */}
+                    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50/50 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <UserPlus className="h-3.5 w-3.5 text-[#F26522]" />
+                        <span className="text-xs font-semibold text-gray-700">Assign Teacher</span>
+                      </div>
+                      {(() => {
+                        const assignedIds = new Set(clsTeachers.map((t) => t.id));
+                        const available = teachers.filter((t) => !assignedIds.has(t.id));
+                        if (available.length === 0) {
+                          return <p className="text-[11px] text-gray-500">All teachers in this branch are already assigned to this class.</p>;
+                        }
+                        return (
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <Select value={assignTeacherId} onValueChange={setAssignTeacherId}>
+                              <SelectTrigger className={cn(inputCls, 'h-9 flex-1')}>
+                                <SelectValue placeholder="Select a teacher…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {available.map((t) => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.name}{t.rollNo ? ` • ${t.rollNo}` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <button
+                              onClick={assignTeacher}
+                              disabled={!assignTeacherId || assignSaving}
+                              className={btnPrimary + ' h-9 shrink-0'}
+                            >
+                              {assignSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                              Assign
+                            </button>
+                          </div>
+                        );
+                      })()}
+                      <p className="text-[11px] text-gray-400 mt-2">Assigned teachers will see this class in their portal.</p>
+                    </div>
                   </div>
                 </div>
 
