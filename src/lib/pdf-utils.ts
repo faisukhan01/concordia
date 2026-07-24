@@ -535,7 +535,7 @@ export async function buildAdmissionReceipt(
     ['Student Name', data.studentName || '—'],
     ['Roll Number', data.rollNo || '—'],
     ['Program / Course', data.program || '—'],
-    ['Department', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
+    ['Class', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
     ['Father / Guardian', data.guardian || '—'],
     ['Guardian Phone', data.guardianPhone || '—'],
     ['CNIC / B-Form', data.cnic || '—'],
@@ -630,7 +630,7 @@ export async function buildFeeChallan(data: FeeChallanData): Promise<jsPDF> {
   drawInfoGrid(ctx, [
     ['Student Name', data.studentName || '—'],
     ['Roll Number', data.rollNo || '—'],
-    ['Department', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
+    ['Class', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
     ['Fee Type', data.type || 'Tuition'],
     [
       'Period',
@@ -815,7 +815,7 @@ export async function buildReportCard(data: ReportCardData): Promise<jsPDF> {
   drawInfoGrid(ctx, [
     ['Student Name', data.studentName],
     ['Roll Number', data.rollNo],
-    ['Department', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
+    ['Class', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
     ['Term / Exam', data.term || data.examMonth || '—'],
   ]);
 

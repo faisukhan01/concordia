@@ -738,7 +738,7 @@ function NewEnrollmentView({
         });
         toast({
           title: 'Please complete academic placement',
-          description: 'Program, department, and roll number are required.',
+          description: 'Program, class, and roll number are required.',
           variant: 'destructive',
         });
         return false;
@@ -979,7 +979,7 @@ function NewEnrollmentView({
           <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left text-sm space-y-2">
             <Row label="Roll Number" value={created.rollNo} mono />
             <Row
-              label="Department"
+              label="Class"
               value={`${created.class || '—'}${created.section ? ' · ' + created.section : ''}`}
             />
             <Row
@@ -1277,7 +1277,7 @@ function NewEnrollmentView({
           <div className="mb-5">
             <h2 className="text-sm font-semibold text-gray-900">Academic Placement</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Program, department, and roll number.
+              Program, class, and roll number.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1302,7 +1302,7 @@ function NewEnrollmentView({
               </Select>
               {err('program', 'Program')}
             </Field>
-            <Field label="Department" required>
+            <Field label="Class" required>
               <Select
                 value={form.classId}
                 onValueChange={(v) => {
@@ -1313,12 +1313,12 @@ function NewEnrollmentView({
                 }}
               >
                 <SelectTrigger className={`${inputCls} w-full`}>
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
                   {classes.length === 0 && (
                     <div className="px-3 py-2 text-xs text-gray-500">
-                      No departments in this branch.
+                      No classes in this branch.
                     </div>
                   )}
                   {classes.map((c) => (
@@ -1329,7 +1329,7 @@ function NewEnrollmentView({
                   ))}
                 </SelectContent>
               </Select>
-              {err('classId', 'Department')}
+              {err('classId', 'Class')}
             </Field>
             <Field label="Section">
               <Select value={form.section} onValueChange={(v) => set('section', v)}>
@@ -1354,13 +1354,13 @@ function NewEnrollmentView({
                   value={form.rollNo}
                   onChange={(e) => set('rollNo', e.target.value)}
                   onBlur={() => markTouched('rollNo')}
-                  placeholder="Auto-suggested from department"
+                  placeholder="Auto-suggested from class"
                   className={`${inputCls} pl-9 font-mono text-sm`}
                 />
               </div>
               {err('rollNo', 'Roll number')}
               <p className="text-[11px] text-gray-500 mt-1">
-                Auto-suggested from this department — edit if needed.
+                Auto-suggested from this class — edit if needed.
               </p>
             </Field>
           </div>
