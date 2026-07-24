@@ -2,7 +2,6 @@
 
 import { useSyncExternalStore } from 'react';
 import { useApp } from '@/lib/store';
-import { LandingPage } from '@/components/landing/landing-page';
 import { LoginPage } from '@/components/auth/login-page';
 import { RolePortal } from '@/components/portal/role-portal';
 
@@ -30,7 +29,7 @@ export default function Home() {
     );
   }
 
-  if (view === 'login') return <LoginPage />;
+  // No landing page — go straight to login or portal.
   if (view === 'portal') return <RolePortal />;
-  return <LandingPage />;
+  return <LoginPage />;
 }

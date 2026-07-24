@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/store';
 import {
-  Lock, Eye, EyeOff, Loader2, ArrowRight, ArrowLeft, User as UserIcon,
+  Lock, Eye, EyeOff, Loader2, ArrowRight, User as UserIcon,
   Sparkles,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -88,20 +88,11 @@ export function LoginPage() {
         style={{ backgroundImage: 'url(/concordia-campus.jpg)' }}
       />
       {/* Barely-there gradient — only the far-left edge is darkened slightly
-          for the "Home" link legibility. Campus photo stays bright everywhere
-          else so the 3.5% card tint is clearly perceptible. */}
+          so the white login card has enough contrast. Campus photo stays
+          bright everywhere else. */}
       <div className="absolute inset-0 bg-gradient-to-r from-black/15 via-transparent to-transparent" />
       {/* Bottom vignette so the copyright text is readable */}
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 to-transparent" />
-
-      {/* ─── Home link (top-left) ─── */}
-      <button
-        onClick={() => setView('landing')}
-        className="absolute top-5 left-5 z-30 flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white transition-colors group"
-      >
-        <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
-        Home
-      </button>
 
       {/* ─── Main two-column layout ─── */}
       <div className="relative z-20 min-h-screen flex items-stretch justify-between">

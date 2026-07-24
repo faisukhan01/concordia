@@ -82,11 +82,10 @@ src/
 │   ├── download/             # Mobile APK download page
 │   ├── globals.css           # Tailwind + theme tokens
 │   ├── layout.tsx            # Root layout
-│   └── page.tsx             # Single route — switches landing/login/portal
+│   └── page.tsx             # Single route — switches login/portal
 ├── components/
 │   ├── auth/                 # Sign-in page
 │   ├── brand-logo.tsx        # Concordia logo
-│   ├── landing/              # Marketing landing page
 │   ├── onboarding/           # First-visit tooltips
 │   ├── portal/               # 7 role portals + shared shell
 │   └── ui/                   # shadcn/ui primitives
@@ -94,7 +93,6 @@ src/
 ├── lib/
 │   ├── api.ts                # Typed API client (frontend)
 │   ├── db.ts                 # Prisma client
-│   ├── modules.ts            # Module metadata (landing page)
 │   ├── role-modules.ts       # Per-role sidebar definitions
 │   ├── server/               # Server-only code
 │   │   ├── auth.ts           # Bearer-token sessions + requireRole RBAC
@@ -110,9 +108,9 @@ public/                       # Static assets (logos, campus photo)
 
 ## Architecture Notes
 
-- **Single route.** The entire app renders at `/`. The view (landing →
-  login → portal) is driven by the Zustand store, not URL routing. This
-  keeps the auth flow seamless and avoids SSR hydration complexity. The
+- **Single route.** The entire app renders at `/`. The view (login →
+  portal) is driven by the Zustand store, not URL routing. This keeps
+  the auth flow seamless and avoids SSR hydration complexity. The
   tradeoff (no deep-linking to specific portal sub-pages) is acceptable
   for this use case because each portal is role-gated and personalized.
 - **API catch-all.** All API requests flow through `src/app/api/[...path]/route.ts`

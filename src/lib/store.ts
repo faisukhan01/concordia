@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-export type View = 'landing' | 'login' | 'portal';
+export type View = 'login' | 'portal';
 
 export type Role = 'super-admin' | 'admin' | 'admissions' | 'accountant' | 'academic' | 'teacher' | 'student' | 'parent' | 'institute-admin' | 'branch-manager';
 
@@ -67,7 +67,7 @@ const sessionStorageAdapter = {
 export const useApp = create<AppState>()(
   persist(
     (set) => ({
-      view: 'landing',
+      view: 'login',
       user: null,
       token: null,
       activeModule: 'dashboard',
@@ -75,7 +75,7 @@ export const useApp = create<AppState>()(
       setUser: (u) => set({ user: u, activeModule: 'dashboard' }),
       setToken: (t) => set({ token: t }),
       setActiveModule: (m) => set({ activeModule: m }),
-      logout: () => set({ view: 'landing', user: null, token: null, activeModule: 'dashboard' }),
+      logout: () => set({ view: 'login', user: null, token: null, activeModule: 'dashboard' }),
     }),
     {
       name: 'esm-app',
