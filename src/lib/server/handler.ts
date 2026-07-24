@@ -424,6 +424,82 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       return NextResponse.json(r.rows);
     }
 
+    // Reference data — common lookup lists used by admissions/academic forms.
+    // Returns: { classes: string[], sections: string[], subjects: string[], programs: string[] }
+    // - classes: distinct class names from this branch (or all if super-admin)
+    // - sections: distinct section letters used anywhere
+    // - subjects: curated Concordia subject list + any custom subjects from teachers
+    // - programs: curated Concordia program list (ICS, I.Com, F.Sc Pre-Medical, etc.)
+    if (method === 'GET' && path === 'reference') {
+      const user = await requireAuth(req);
+      const { branchId } = query;
+      const brId = branchId || user.branchId;
+
+      // Default sections (the canonical Concordia set) — augmented with any
+      // custom sections actually in use so existing data is always visible.
+      const defaultSections = ['A', 'B', 'C', 'D'];
+
+      // Default subjects — the canonical Concordia subject list. Augmented
+      // with any custom subjects teachers have been assigned.
+      const defaultSubjects = [
+        'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English',
+        'Urdu', 'Islamiat', 'Pakistan Studies', 'Computer Science',
+        'Economics', 'Accounting', 'Business Studies', 'Statistics',
+        'Geography', 'History', 'Civics', 'Psychology', 'Sociology',
+        'Fine Arts', 'Physical Education',
+      ];
+
+      // Default programs — Concordia's HSSC/ADP/BS course catalog.
+      const defaultPrograms = [
+        'ICS', 'I.Com', 'F.Sc Pre-Medical', 'F.Sc Pre-Engineering',
+        'FA', 'F.A General Science', 'ADP', 'BS Commerce',
+      ];
+
+      let classes: string[] = [];
+      let sections: string[] = [...defaultSections];
+      let subjects: string[] = [...defaultSubjects];
+
+      try {
+        if (brId) {
+          const clsR = await db.execute({
+            sql: 'SELECT DISTINCT name, section FROM classes WHERE branchId = ? ORDER BY name',
+            args: [brId],
+          });
+          const classNameSet = new Set<string>();
+          const sectionSet = new Set<string>(defaultSections);
+          for (const row of clsR.rows as any[]) {
+            if (row.name) classNameSet.add(row.name);
+            if (row.section) sectionSet.add(row.section);
+          }
+          classes = Array.from(classNameSet);
+          sections = Array.from(sectionSet).sort();
+
+          // Pull any custom subjects teachers have been assigned in this branch.
+          const tR = await db.execute({
+            sql: 'SELECT subjects FROM users WHERE branchId = ? AND role = ?',
+            args: [brId, 'teacher'],
+          });
+          const subjectSet = new Set<string>(defaultSubjects);
+          for (const row of tR.rows as any[]) {
+            if (!row.subjects) continue;
+            try {
+              const parsed = typeof row.subjects === 'string' ? JSON.parse(row.subjects) : row.subjects;
+              if (Array.isArray(parsed)) {
+                for (const s of parsed) {
+                  if (typeof s === 'string' && s.trim()) subjectSet.add(s.trim());
+                }
+              }
+            } catch {}
+          }
+          subjects = Array.from(subjectSet);
+        }
+      } catch {
+        // Fall back to defaults on any DB error — the form should still work.
+      }
+
+      return NextResponse.json({ classes, sections, subjects, programs: defaultPrograms });
+    }
+
     // Create a new class (Academic Office / Admin / branch-manager / institute-admin)
     if (method === 'POST' && path === 'classes') {
       const user = await requireAuth(req);

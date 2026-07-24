@@ -232,7 +232,7 @@ export const api = {
   getRoutes: (branchId?: string) => request<any[]>(branchId ? `transport/routes?branchId=${branchId}` : 'transport/routes'),
   addRoute: (body: any) => request<any>('transport/routes', { method: 'POST', body: JSON.stringify(body) }),
   // reference
-  reference: () => cachedGet<{ classes: string[]; sections: string[]; subjects: string[] }>('reference'),
+  reference: () => cachedGet<{ classes: string[]; sections: string[]; subjects: string[]; programs: string[] }>('reference'),
   // classes & courses
   getClasses: (branchId?: string) => request<any[]>(branchId ? `classes?branchId=${branchId}` : 'classes'),
   createClass: (name: string, section: string, branchId?: string) =>
@@ -294,7 +294,13 @@ export const api = {
   getFeeStructure: (branchId?: string) => request<any[]>(branchId ? `fee-structure?branchId=${branchId}` : 'fee-structure'),
   setFeeStructure: (classId: string, monthlyFee: number, admissionFee?: number) =>
     request<any>('fee-structure', { method: 'POST', body: JSON.stringify({ classId, monthlyFee, admissionFee }) }),
-  getFeeInvoices: (studentId?: string) => request<any[]>(studentId ? `fee-invoices?studentId=${studentId}` : 'fee-invoices'),
+  getFeeInvoices: (studentId?: string | { studentId?: string }) => {
+    // Be defensive: accept either a raw studentId string or (legacy) an
+    // options object. Coerce anything that isn't a real string to undefined
+    // so we never serialize `[object Object]` into the URL.
+    const sid = typeof studentId === 'string' ? studentId : studentId?.studentId;
+    return request<any[]>(sid ? `fee-invoices?studentId=${encodeURIComponent(sid)}` : 'fee-invoices');
+  },
   getAllInvoices: () => request<any[]>('fee-invoices?all=1'),
   getBranchInvoices: () => cachedGet<any[]>('fee-invoices/branch'),
   generateInvoices: (month: string, year: number) =>

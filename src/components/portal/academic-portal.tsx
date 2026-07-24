@@ -18,7 +18,7 @@
 //   • Tables: uppercase muted headers, hover row tint, subtle status badges.
 // ============================================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -49,11 +49,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import {
   Users, GraduationCap, BookOpen, Calendar, FileText, Award, KeyRound,
   Megaphone, CalendarDays, ClipboardList, Loader2, Search, Copy, Check,
-  Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight,
+  Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye, X,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -672,27 +678,131 @@ function StudentsView({ user }: { user: any }) {
 // ───────────────────────── Create Logins ─────────────────────────
 function LoginsView({ user }: { user: any }) {
   const [tab, setTab] = useState<'teacher' | 'student'>('teacher');
-  const [form, setForm] = useState({ name: '', rollNo: '', email: '', password: '', class: '', section: '', subjects: '' });
+  const [form, setForm] = useState({
+    name: '', rollNo: '', email: '', password: '',
+    class: '', classId: '', section: '',
+    subjects: [] as string[],
+    subjectInput: '',
+  });
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<{ user: string; pass: string; name: string } | null>(null);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [classesLoading, setClassesLoading] = useState(false);
+  const [classesLoaded, setClassesLoaded] = useState(false);
+  const [suggestedSubjects, setSuggestedSubjects] = useState<string[]>([]);
+  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Lazy-load classes the first time the Student tab is opened.
+  useEffect(() => {
+    if (tab !== 'student' || classesLoaded) return;
+    let cancelled = false;
+    setClassesLoading(true);
+    api.getClasses(user?.branchId)
+      .then(d => { if (cancelled) return; setClasses(Array.isArray(d) ? d : []); setClassesLoaded(true); })
+      .catch(() => { if (!cancelled) setClasses([]); })
+      .finally(() => { if (!cancelled) setClassesLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, user?.branchId, classesLoaded]);
+
+  // Lazy-load suggested subjects the first time the Teacher tab is opened.
+  useEffect(() => {
+    if (tab !== 'teacher' || suggestedLoaded) return;
+    let cancelled = false;
+    api.reference()
+      .then(r => { if (cancelled) return; setSuggestedSubjects(Array.isArray(r?.subjects) ? r.subjects : []); setSuggestedLoaded(true); })
+      .catch(() => { if (!cancelled) setSuggestedSubjects([]); });
+    return () => { cancelled = true; };
+  }, [tab, suggestedLoaded]);
+
+  // --- Subjects chip helpers ---
+  const addSubjects = (raw: string) => {
+    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length === 0) return;
+    setForm(prev => {
+      const merged = [...prev.subjects];
+      for (const p of parts) {
+        if (!merged.some(s => s.toLowerCase() === p.toLowerCase())) merged.push(p);
+      }
+      return { ...prev, subjects: merged, subjectInput: '' };
+    });
+  };
+
+  const removeSubject = (s: string) => {
+    setForm(prev => ({ ...prev, subjects: prev.subjects.filter(x => x !== s) }));
+  };
+
+  const onSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addSubjects((e.target as HTMLInputElement).value);
+    } else if (e.key === 'Backspace' && form.subjectInput === '' && form.subjects.length > 0) {
+      setForm(prev => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
+    }
+  };
+
+  // --- Password strength ---
+  const pwLevel: 'empty' | 'weak' | 'medium' | 'strong' = (() => {
+    if (!form.password) return 'empty';
+    const len = form.password.length;
+    const hasLetter = /[a-zA-Z]/.test(form.password);
+    const hasNum = /[0-9]/.test(form.password);
+    if (len < 6) return 'weak';
+    if (len >= 10 && hasLetter && hasNum) return 'strong';
+    return 'medium';
+  })();
+
+  const strengthMeta: Record<'empty' | 'weak' | 'medium' | 'strong', { label: string; color: string; bar: string; width: string }> = {
+    empty: { label: '', color: '', bar: '', width: '0%' },
+    weak: { label: 'Weak', color: 'text-red-600', bar: 'bg-red-500', width: '33%' },
+    medium: { label: 'Medium', color: 'text-amber-600', bar: 'bg-amber-500', width: '66%' },
+    strong: { label: 'Strong', color: 'text-emerald-600', bar: 'bg-emerald-500', width: '100%' },
+  };
+  const sm = strengthMeta[pwLevel];
 
   const submit = async () => {
     if (!form.name || !form.rollNo) { toast({ title: 'Name and ID are required', variant: 'destructive' }); return; }
+    if (tab === 'student' && !form.classId) { toast({ title: 'Please select a class', variant: 'destructive' }); return; }
     setSaving(true);
     try {
       const password = form.password || (tab === 'teacher' ? 'teacher' : 'student') + Math.floor(1000 + Math.random() * 9000);
       const email = form.email || `${form.rollNo.toLowerCase()}@concordia.edu.pk`;
+      // Flush any un-committed subject text so it isn't lost on submit.
+      let subjects = form.subjects;
+      if (tab === 'teacher' && form.subjectInput.trim()) {
+        const parts = form.subjectInput.split(',').map(s => s.trim()).filter(Boolean);
+        subjects = [...form.subjects];
+        for (const p of parts) {
+          if (!subjects.some(s => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
+        }
+      }
       await api.createPlatformUser({
         name: form.name, email, rollNo: form.rollNo, password, role: tab,
         branchId: user?.branchId, instituteId: user?.instituteId,
-        ...(tab === 'teacher' ? { subjects: JSON.stringify(form.subjects.split(',').map(s => s.trim()).filter(Boolean)), title: 'Teacher' } : {}),
-        ...(tab === 'student' ? { class: form.class, section: form.section, guardian: '' } : {}),
+        ...(tab === 'teacher'
+          ? { subjects: JSON.stringify(subjects), title: 'Teacher' }
+          : { class: form.class, classId: form.classId, section: form.section, guardian: '' }),
       });
       setCreated({ user: form.rollNo, pass: password, name: form.name });
-      setForm({ name: '', rollNo: '', email: '', password: '', class: '', section: '', subjects: '' });
+      setForm({
+        name: '', rollNo: '', email: '', password: '',
+        class: '', classId: '', section: '',
+        subjects: [], subjectInput: '',
+      });
     } catch {
       toast({ title: 'Failed to create login', variant: 'destructive' });
     } finally { setSaving(false); }
+  };
+
+  const onClassChange = (classId: string) => {
+    const cls = classes.find(c => c.id === classId);
+    setForm(prev => ({ ...prev, classId, class: cls?.name || '', section: cls?.section || '' }));
+  };
+
+  const createAnother = () => {
+    setCreated(null);
+    // Defer focus until after the Sheet's close animation + focus-restore.
+    setTimeout(() => nameRef.current?.focus(), 300);
   };
 
   return (
@@ -708,7 +818,13 @@ function LoginsView({ user }: { user: any }) {
         <SectionHeader title={`New ${tab === 'teacher' ? 'Teacher' : 'Student'} Login`} desc="Credentials will be generated automatically if left blank." />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Full Name" required>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputCls} placeholder={tab === 'teacher' ? 'Ayesha Khan' : 'Ali Ahmed'} />
+            <Input
+              ref={nameRef}
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              className={inputCls}
+              placeholder={tab === 'teacher' ? 'Ayesha Khan' : 'Ali Ahmed'}
+            />
           </Field>
           <Field label={tab === 'teacher' ? 'Teacher ID' : 'Roll Number'} required>
             <Input value={form.rollNo} onChange={e => setForm({ ...form, rollNo: e.target.value })} className={inputCls} placeholder={tab === 'teacher' ? 'T001' : 'S001'} />
@@ -718,19 +834,108 @@ function LoginsView({ user }: { user: any }) {
           </Field>
           <Field label="Password (optional)">
             <Input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className={inputCls} placeholder="auto-generated if blank" />
+            {pwLevel === 'empty' ? (
+              <p className="text-[11px] text-gray-500 mt-1.5">Will be auto-generated (e.g. teacher4827).</p>
+            ) : (
+              <div className="flex items-center gap-2 mt-1.5">
+                <div className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                  <div className={cn('h-full rounded-full transition-all', sm.bar)} style={{ width: sm.width }} />
+                </div>
+                <span className={cn('text-[11px] font-medium tabular-nums', sm.color)}>{sm.label}</span>
+              </div>
+            )}
           </Field>
           {tab === 'teacher' && (
-            <Field label="Subjects (comma-separated)">
-              <Input value={form.subjects} onChange={e => setForm({ ...form, subjects: e.target.value })} className={inputCls} placeholder="Mathematics, Physics" />
-            </Field>
+            <div className="md:col-span-2">
+              <Field label="Subjects">
+                <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
+                  {form.subjects.map(s => (
+                    <Badge key={s} variant="secondary" className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs">
+                      {s}
+                      <button
+                        type="button"
+                        onClick={() => removeSubject(s)}
+                        className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                        aria-label={`Remove ${s}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <input
+                    value={form.subjectInput}
+                    onChange={e => setForm(prev => ({ ...prev, subjectInput: e.target.value }))}
+                    onKeyDown={onSubjectKeyDown}
+                    onBlur={e => addSubjects(e.target.value)}
+                    placeholder={form.subjects.length === 0 ? 'Type a subject and press Enter' : ''}
+                    className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1.5">Press Enter or comma to add a subject.</p>
+                {suggestedSubjects.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Suggestions</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggestedSubjects.slice(0, 12).map(s => {
+                        const added = form.subjects.some(x => x.toLowerCase() === s.toLowerCase());
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            disabled={added}
+                            onClick={() => addSubjects(s)}
+                            className={cn(
+                              'inline-flex items-center gap-1 text-[11px] font-medium rounded-md border px-2 py-1 transition-colors',
+                              added
+                                ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-[#F26522] hover:text-[#F26522]',
+                            )}
+                          >
+                            {added ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                            {s}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </Field>
+            </div>
           )}
           {tab === 'student' && (
             <>
-              <Field label="Class">
-                <Input value={form.class} onChange={e => setForm({ ...form, class: e.target.value })} className={inputCls} placeholder="Grade 10" />
+              <Field label="Class" required>
+                <Select value={form.classId} onValueChange={onClassChange} disabled={classesLoading}>
+                  <SelectTrigger className="w-full rounded-lg border-gray-200 bg-white" style={{ height: '2.5rem' }}>
+                    <SelectValue placeholder={classesLoading ? 'Loading classes…' : 'Select a class'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classesLoading ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading classes…
+                      </div>
+                    ) : classes.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-gray-500 max-w-[260px]">
+                        No classes yet. Create classes first from the Classes module.
+                      </div>
+                    ) : (
+                      classes.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}{c.section ? ` — ${c.section}` : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Section">
-                <Input value={form.section} onChange={e => setForm({ ...form, section: e.target.value })} className={inputCls} placeholder="A" />
+                <Input
+                  value={form.section}
+                  disabled
+                  placeholder="—"
+                  className={cn(inputCls, 'bg-gray-50 text-gray-500')}
+                />
+                <p className="text-[11px] text-gray-500 mt-1.5">Section is determined by the selected class.</p>
               </Field>
             </>
           )}
@@ -772,7 +977,12 @@ function LoginsView({ user }: { user: any }) {
                 <div className="text-sm font-mono font-semibold text-gray-900">{created?.pass}</div>
               </div>
             </div>
-            <button onClick={() => setCreated(null)} className={cn(btnSecondary, 'w-full justify-center h-10')}>Done</button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={createAnother} className={cn(btnPrimary, 'justify-center h-10')}>
+                <Plus className="h-4 w-4" /> Create Another
+              </button>
+              <button onClick={() => setCreated(null)} className={cn(btnSecondary, 'justify-center h-10')}>Done</button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -1203,38 +1413,92 @@ function ReportCardsView({ user }: { user: any }) {
 }
 
 // ───────────────────────── Classes View ─────────────────────────
+type ClassRow = { id: string; name: string; section: string; branchId?: string } & Record<string, any>;
+type BulkProgress = { current: number; total: number } | null;
+
+// Parse a teacher's `classes` JSON field (string OR array) into a string[].
+function parseTeacherField(raw: any): string[] {
+  try {
+    if (!raw) return [];
+    const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
+  } catch { return []; }
+}
+
 function ClassesView({ user }: { user: any }) {
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassRow[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [showForm, setShowForm] = useState(false);
+  const [mode, setMode] = useState<'single' | 'bulk'>('single');
   const [name, setName] = useState('');
   const [section, setSection] = useState('A');
+  const [capacity, setCapacity] = useState('');
+  const [bulkSections, setBulkSections] = useState('');
   const [saving, setSaving] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress>(null);
+
+  // Frontend-only capacity map (keyed by class id). Backend schema doesn't
+  // store capacity yet — values live in component state and reset on reload.
+  const [capacityMap, setCapacityMap] = useState<Record<string, number>>({});
+
+  // Debounced search (200ms) — filters by class name OR section.
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 200);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Detail sheet state
+  const [detailClass, setDetailClass] = useState<ClassRow | null>(null);
+  const [showAllStudents, setShowAllStudents] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
       api.getClasses(user?.branchId).catch(() => []),
       api.platformUsers({ role: 'student', branchId: user?.branchId }).catch(() => []),
-    ]).then(([c, s]) => {
+      api.platformUsers({ role: 'teacher', branchId: user?.branchId }).catch(() => []),
+    ]).then(([c, s, t]) => {
       setClasses(Array.isArray(c) ? c : []);
       setStudents(Array.isArray(s) ? s : []);
+      setTeachers(Array.isArray(t) ? t : []);
     }).finally(() => setLoading(false));
   }, [user?.branchId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const studentCount = (cls: any) =>
+  const studentCount = (cls: ClassRow) =>
     students.filter((s) => s.class === cls.name && s.section === cls.section).length;
 
+  const enrolledStudents = (cls: ClassRow) =>
+    students.filter((s) => s.class === cls.name && s.section === cls.section);
+
+  // Teachers whose `classes` array includes this class's name (or the
+  // combined "Name-Section" / "Name Section" forms used by the Assign view).
+  const classTeachers = (cls: ClassRow) => teachers.filter((t) => {
+    const arr = parseTeacherField(t.classes);
+    if (arr.length === 0) return false;
+    const combinedDash = `${cls.name}-${cls.section}`;
+    const combinedSpace = `${cls.name} ${cls.section}`;
+    return arr.some((c) => c === cls.name || c === combinedDash || c === combinedSpace);
+  });
+
+  // Single-section submit (with optional capacity).
   const submit = async () => {
     if (!name.trim()) { toast({ title: 'Class name is required', variant: 'destructive' }); return; }
     setSaving(true);
     try {
-      await api.createClass(name.trim(), section.trim() || 'A', user?.branchId);
+      const created = await api.createClass(name.trim(), section.trim() || 'A', user?.branchId);
+      const capNum = parseInt(capacity, 10);
+      if (created?.id && !Number.isNaN(capNum) && capNum > 0) {
+        setCapacityMap((prev) => ({ ...prev, [created.id as string]: capNum }));
+      }
       toast({ title: 'Class created', description: `${name.trim()} — Section ${section.trim() || 'A'}` });
-      setName(''); setSection('A'); setShowForm(false);
+      setName(''); setSection('A'); setCapacity(''); setShowForm(false);
       load();
     } catch (e: any) {
       toast({ title: 'Failed to create class', description: e?.message || 'Please try again', variant: 'destructive' });
@@ -1243,19 +1507,71 @@ function ClassesView({ user }: { user: any }) {
     }
   };
 
-  const del = async (cls: any) => {
+  // Bulk-section submit — calls api.createClass for each section in sequence,
+  // continues past failures, reports failures at the end via toast.
+  const bulkList = Array.from(new Set(
+    bulkSections.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
+  ));
+  const submitBulk = async () => {
+    if (!name.trim()) { toast({ title: 'Class name is required', variant: 'destructive' }); return; }
+    if (bulkList.length === 0) { toast({ title: 'Enter at least one section', variant: 'destructive' }); return; }
+    setSaving(true);
+    setBulkProgress({ current: 0, total: bulkList.length });
+    const failures: string[] = [];
+    const successes: string[] = [];
+    for (let i = 0; i < bulkList.length; i++) {
+      const sec = bulkList[i];
+      setBulkProgress({ current: i + 1, total: bulkList.length });
+      try {
+        await api.createClass(name.trim(), sec, user?.branchId);
+        successes.push(sec);
+      } catch (e: any) {
+        failures.push(`${sec} (${e?.message || 'failed'})`);
+      }
+    }
+    setBulkProgress(null);
+    setSaving(false);
+    if (successes.length > 0) {
+      toast({
+        title: `${successes.length} section(s) created`,
+        description: `${name.trim()} — ${successes.join(', ')}`,
+      });
+    }
+    if (failures.length > 0) {
+      toast({
+        title: `${failures.length} section(s) failed`,
+        description: failures.join('; '),
+        variant: 'destructive',
+      });
+    }
+    if (successes.length > 0) {
+      setName(''); setBulkSections(''); setShowForm(false);
+      load();
+    }
+  };
+
+  const del = async (cls: ClassRow) => {
     if (!confirm(`Delete ${cls.name} — Section ${cls.section}? This cannot be undone.`)) return;
     try {
       await api.deleteClassSection(cls.id);
       toast({ title: 'Class deleted' });
+      setCapacityMap((prev) => { const next = { ...prev }; delete next[cls.id]; return next; });
+      if (detailClass?.id === cls.id) setDetailClass(null);
       load();
     } catch (e: any) {
       toast({ title: 'Cannot delete', description: e?.message || 'This class may have students assigned.', variant: 'destructive' });
     }
   };
 
+  const filteredClasses = classes.filter((c) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (c.name || '').toLowerCase().includes(q) || (c.section || '').toLowerCase().includes(q);
+  });
+
   const totalSections = classes.length;
   const uniqueNames = new Set(classes.map((c) => c.name)).size;
+  const capNum = capacity !== '' ? parseInt(capacity, 10) : NaN;
 
   return (
     <div className="space-y-6">
@@ -1278,24 +1594,86 @@ function ClassesView({ user }: { user: any }) {
       {showForm && (
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <SectionHeader title="New Class" desc="Create a class section. Students will be assigned during enrollment." />
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_auto] gap-3 items-end">
-            <Field label="Class Name" required>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Grade 10, Class 9, Prep" />
-            </Field>
-            <Field label="Section">
-              <Input value={section} onChange={(e) => setSection(e.target.value)} className={inputCls} placeholder="A" maxLength={3} />
-            </Field>
-            <button onClick={submit} disabled={saving} className={btnPrimary + ' h-10'}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Create Class
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-500 mt-2">Sections are auto-uppercased. Duplicate name+section combinations are rejected.</p>
+          <Tabs value={mode} onValueChange={(v) => setMode(v as 'single' | 'bulk')}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="single">Single Section</TabsTrigger>
+              <TabsTrigger value="bulk">Bulk Sections</TabsTrigger>
+            </TabsList>
+
+            {/* SINGLE MODE */}
+            <TabsContent value="single">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end">
+                <Field label="Class Name" required>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Grade 10, Class 9, Prep" />
+                </Field>
+                <Field label="Section">
+                  <Input value={section} onChange={(e) => setSection(e.target.value)} className={inputCls} placeholder="A" maxLength={3} />
+                </Field>
+                <Field label="Capacity (optional)">
+                  <Input type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} className={inputCls} placeholder="Unlimited" />
+                </Field>
+                <button onClick={submit} disabled={saving} className={btnPrimary + ' h-10'}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Create Class
+                </button>
+              </div>
+              {!Number.isNaN(capNum) && capNum > 0 ? (
+                <p className="text-[11px] text-gray-500 mt-2 flex items-center gap-1">
+                  <Check className="h-3 w-3 text-emerald-600" /> Capacity saved locally (frontend only — not persisted to backend yet).
+                </p>
+              ) : (
+                <p className="text-[11px] text-gray-500 mt-2">Sections are auto-uppercased. Duplicate name+section combinations are rejected.</p>
+              )}
+            </TabsContent>
+
+            {/* BULK MODE */}
+            <TabsContent value="bulk">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                <Field label="Class Name" required>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="e.g. Grade 10" />
+                </Field>
+                <Field label="Sections (comma-separated)" required>
+                  <Input value={bulkSections} onChange={(e) => setBulkSections(e.target.value)} className={inputCls} placeholder="A, B, C, D" />
+                </Field>
+                <button onClick={submitBulk} disabled={saving || !!bulkProgress} className={btnPrimary + ' h-10'}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Create{bulkList.length > 0 ? ` ${bulkList.length}` : ''} Sections
+                </button>
+              </div>
+              {bulkProgress && (
+                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-center gap-2 text-xs text-gray-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[#F26522]" />
+                    <span>Creating {bulkProgress.current} of {bulkProgress.total}…</span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                    <div
+                      className="h-full bg-[#F26522] transition-all"
+                      style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-[11px] text-gray-500 mt-2">
+                Each section is created in sequence. Duplicates (same name+section) are skipped and reported at the end.
+              </p>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <SectionHeader title="All Classes" desc={`${totalSections} section(s) in this campus`} />
+        {/* Debounced search bar */}
+        <div className="relative mb-4 w-full sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search by class name or section…"
+            className={cn(inputCls, 'pl-9 h-9')}
+          />
+        </div>
         {loading ? (
           <SkeletonTable rows={4} />
         ) : classes.length === 0 ? (
@@ -1309,6 +1687,12 @@ function ClassesView({ user }: { user: any }) {
               </button>
             }
           />
+        ) : filteredClasses.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No matches"
+            desc={`No classes match "${searchQuery}". Try a different name or section.`}
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -1321,26 +1705,192 @@ function ClassesView({ user }: { user: any }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {classes.map((c) => (
-                  <TableRow key={c.id} className="border-gray-100 hover:bg-gray-50">
-                    <TableCell className="text-sm font-medium text-gray-900">{c.name}</TableCell>
-                    <TableCell className="text-sm text-gray-700">{c.section}</TableCell>
-                    <TableCell className="text-sm text-gray-700 text-center">{studentCount(c)}</TableCell>
-                    <TableCell className="text-right">
-                      <button
-                        onClick={() => del(c)}
-                        className="h-8 px-2 text-xs text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded inline-flex items-center gap-1"
-                      >
-                        <AlertCircle className="h-3.5 w-3.5" /> Delete
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredClasses.map((c) => {
+                  const count = studentCount(c);
+                  const cap = capacityMap[c.id];
+                  const pct = cap && cap > 0 ? Math.min(100, Math.round((count / cap) * 100)) : 0;
+                  const full = !!cap && count >= cap;
+                  return (
+                    <TableRow key={c.id} className="border-gray-100 hover:bg-gray-50">
+                      <TableCell className="text-sm font-medium text-gray-900">{c.name}</TableCell>
+                      <TableCell className="text-sm text-gray-700">{c.section}</TableCell>
+                      <TableCell className="text-sm text-gray-700 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="inline-flex items-center gap-1.5">
+                            {count > 0 ? (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-label="Has students" />
+                            ) : (
+                              <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-100 text-gray-500 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">Empty</span>
+                            )}
+                            <span className="tabular-nums">
+                              {count}{cap ? ` / ${cap}` : ''}
+                            </span>
+                          </div>
+                          {cap && cap > 0 && (
+                            <div className="h-1 w-20 rounded-full bg-gray-200 overflow-hidden">
+                              <div
+                                className={cn('h-full transition-all', full ? 'bg-rose-500' : 'bg-[#F26522]')}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => { setDetailClass(c); setShowAllStudents(false); }}
+                            className="h-8 px-2 text-xs text-gray-600 hover:text-[#F26522] hover:bg-orange-50 rounded inline-flex items-center gap-1"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> View
+                          </button>
+                          <button
+                            onClick={() => del(c)}
+                            className="h-8 px-2 text-xs text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded inline-flex items-center gap-1"
+                          >
+                            <AlertCircle className="h-3.5 w-3.5" /> Delete
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         )}
       </div>
+
+      {/* Class detail sheet */}
+      <Sheet open={!!detailClass} onOpenChange={(o) => !o && setDetailClass(null)}>
+        <SheetContent className="w-full sm:max-w-lg">
+          {detailClass && (() => {
+            const count = studentCount(detailClass);
+            const cap = capacityMap[detailClass.id];
+            const available = cap ? Math.max(0, cap - count) : null;
+            const enrolled = enrolledStudents(detailClass);
+            const visibleStudents = showAllStudents ? enrolled : enrolled.slice(0, 20);
+            const clsTeachers = classTeachers(detailClass);
+            const occupancyPct = cap && cap > 0 ? Math.min(100, Math.round((count / cap) * 100)) : 0;
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="text-gray-900 text-lg">{detailClass.name} — Section {detailClass.section}</SheetTitle>
+                  <SheetDescription>Class details, enrolled students and assigned teachers.</SheetDescription>
+                </SheetHeader>
+
+                <div className="px-4 pb-2 space-y-5 flex-1 overflow-y-auto">
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Enrolled</div>
+                      <div className="text-lg font-bold text-gray-900 tabular-nums">{count}</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Capacity</div>
+                      <div className="text-lg font-bold text-gray-900 tabular-nums">{cap ?? '—'}</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Available</div>
+                      <div className="text-lg font-bold text-gray-900 tabular-nums">{available ?? '—'}</div>
+                    </div>
+                  </div>
+
+                  {/* Occupancy bar */}
+                  {cap && cap > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+                        <span>Occupancy</span>
+                        <span className="tabular-nums">{count}/{cap} ({occupancyPct}%)</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                        <div
+                          className={cn('h-full transition-all', count >= cap ? 'bg-rose-500' : 'bg-[#F26522]')}
+                          style={{ width: `${occupancyPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Enrolled students */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                      Enrolled Students ({enrolled.length})
+                    </h4>
+                    {enrolled.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center">
+                        <p className="text-xs text-gray-500">No students enrolled in this section yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {visibleStudents.map((s) => (
+                          <div key={s.id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2 hover:bg-gray-50">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-900 truncate">{s.name}</div>
+                              <div className="text-[11px] text-gray-500">
+                                Roll #{s.rollNo || '—'}{s.guardian ? ` • Father: ${s.guardian}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {enrolled.length > 20 && (
+                          <button
+                            onClick={() => setShowAllStudents((v) => !v)}
+                            className="mt-2 w-full text-center text-xs text-[#F26522] hover:underline font-medium py-1"
+                          >
+                            {showAllStudents ? 'Show less' : `View all ${enrolled.length}`}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subjects & Teachers */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                      Subjects &amp; Teachers
+                    </h4>
+                    {clsTeachers.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center">
+                        <p className="text-xs text-gray-500 mb-2">No teachers assigned to this class yet.</p>
+                        <button
+                          onClick={() => toast({ title: 'Open Class / Subject Assign to assign teachers' })}
+                          className="text-xs text-[#F26522] hover:underline font-medium inline-flex items-center gap-1"
+                        >
+                          Assign teachers <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {clsTeachers.map((t) => {
+                          const subs = parseTeacherField(t.subjects);
+                          return (
+                            <div key={t.id} className="rounded-md border border-gray-100 px-3 py-2 hover:bg-gray-50">
+                              <div className="text-sm font-medium text-gray-900">{t.name}</div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">
+                                {subs.length > 0 ? subs.join(', ') : 'No subjects assigned'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <SheetFooter>
+                  <button
+                    onClick={() => del(detailClass)}
+                    className="h-9 px-4 text-sm font-medium text-rose-600 border border-rose-200 bg-white hover:bg-rose-50 rounded-lg inline-flex items-center justify-center gap-1.5 transition-colors w-full"
+                  >
+                    <AlertCircle className="h-4 w-4" /> Delete Class
+                  </button>
+                </SheetFooter>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

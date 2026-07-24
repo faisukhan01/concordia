@@ -41,6 +41,9 @@ import {
   Trophy,
   UserCog,
   Inbox,
+  Lock,
+  Clock,
+  UserPlus,
 } from 'lucide-react';
 
 // Sub-portal components — the admin accesses every role's full portal.
@@ -153,28 +156,6 @@ function EmptyState({
   );
 }
 
-function StatusBadge({ status }: { status?: string }) {
-  const s = (status || 'Active').toLowerCase();
-  const cls =
-    s === 'paid' || s === 'active' || s === 'completed'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-      : s === 'pending' || s === 'partial' || s === 'unpaid'
-        ? 'bg-amber-50 text-amber-700 border-amber-100'
-        : s === 'blocked' || s === 'inactive' || s === 'overdue'
-          ? 'bg-rose-50 text-rose-700 border-rose-100'
-          : 'bg-gray-100 text-gray-600 border-gray-200';
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium capitalize',
-        cls,
-      )}
-    >
-      {status || 'Active'}
-    </span>
-  );
-}
-
 // ───────────────────────── Constants ─────────────────────────
 
 const STAFF_ROLES = ['admin', 'admissions', 'accountant', 'academic'];
@@ -215,7 +196,7 @@ function AdminDashboard({ user, setActiveModule }: { user: any; setActiveModule:
       api.scopedStats(user?.instituteId, user?.branchId).catch(() => null),
       api.platformUsers({}).catch(() => []),
       api.getAnnouncements().catch(() => []),
-      api.getFeeInvoices({}).catch(() => []),
+      api.getFeeInvoices().catch(() => []),
     ]).then(([s, u, a, f]) => {
       if (cancelled) return;
       setStats(s);
@@ -233,6 +214,23 @@ function AdminDashboard({ user, setActiveModule }: { user: any; setActiveModule:
   const teachers = useMemo(() => users.filter((u) => u.role === 'teacher'), [users]);
   const staff = useMemo(() => users.filter((u) => STAFF_ROLES.includes(u.role)), [users]);
   const feeCollected = stats?.totalRevenue ?? fees.filter((f) => f.status === 'Paid').reduce((s, f) => s + (f.paidAmount || f.amount || 0), 0);
+
+  // Base-fee monitoring — surfaces admission-office work to the admin.
+  const isLocked = (s: any) => Boolean(s?.baseFeeLocked) && s?.baseFee != null && s.baseFee !== '';
+  const pendingBaseFee = useMemo(() => students.filter((s) => !isLocked(s)), [students]);
+  const lockedBaseFee = useMemo(() => students.filter((s) => isLocked(s)), [students]);
+  const lockedTotal = useMemo(
+    () => lockedBaseFee.reduce((acc, s) => acc + Number(s.baseFee || 0), 0),
+    [lockedBaseFee],
+  );
+  const thisMonthCount = useMemo(() => {
+    const m = new Date().getMonth();
+    const y = new Date().getFullYear();
+    return students.filter((s) => {
+      const d = s.createdAt ? new Date(s.createdAt) : null;
+      return !!d && d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+  }, [students]);
 
   const recentStudents = useMemo(
     () =>
@@ -367,6 +365,75 @@ function AdminDashboard({ user, setActiveModule }: { user: any; setActiveModule:
         </div>
       </div>
 
+      {/* ── Admission Office Pulse — surfaces admissions work to the admin ── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="Admission Office Pulse"
+          desc="Live snapshot of enrollment + base-fee finalization"
+          action={
+            <button
+              type="button"
+              onClick={() => setActiveModule('admissions:admissions-base-fee')}
+              className="text-[11px] font-semibold text-[#F26522] hover:text-[#D4541E] inline-flex items-center gap-1"
+            >
+              View Fee Records →
+            </button>
+          }
+        />
+        {loading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <GraduationCap className="h-3.5 w-3.5" /> Enrolled
+              </div>
+              <div className="text-xl font-bold text-gray-900 mt-1.5">{students.length}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{thisMonthCount} this month</div>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <Lock className="h-3.5 w-3.5" /> Fee Locked
+              </div>
+              <div className="text-xl font-bold text-gray-900 mt-1.5">{lockedBaseFee.length}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                Rs {lockedTotal.toLocaleString()}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveModule('admissions:admissions-base-fee')}
+              className="text-left rounded-lg border border-amber-200 bg-amber-50/50 p-4 hover:border-amber-300 hover:bg-amber-50 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-700/80">
+                <Clock className="h-3.5 w-3.5" /> Pending Lock
+              </div>
+              <div className="text-xl font-bold text-amber-700 mt-1.5">
+                {pendingBaseFee.length}
+              </div>
+              <div className="text-[11px] text-amber-700/70 mt-0.5">
+                {pendingBaseFee.length === 0 ? 'All finalized ✓' : 'Click to review →'}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModule('admissions:admissions-new')}
+              className="text-left rounded-lg border border-[#F26522]/30 bg-[#FFF0E8] p-4 hover:border-[#F26522] hover:bg-[#FFE5D8] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-[#D4541E]">
+                <UserPlus className="h-3.5 w-3.5" /> New Enrollment
+              </div>
+              <div className="text-xl font-bold text-[#D4541E] mt-1.5">Open</div>
+              <div className="text-[11px] text-[#D4541E]/70 mt-0.5">Click to enroll →</div>
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* ── Recent students table ── */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <SectionHeader
@@ -404,32 +471,49 @@ function AdminDashboard({ user, setActiveModule }: { user: any; setActiveModule:
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
                   Guardian
                 </TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3">
-                  Status
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-right">
+                  Base Fee
+                </TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 py-2.5 px-3 text-center">
+                  Fee Status
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recentStudents.map((u) => (
-                <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
-                  <TableCell className="py-3 px-3 text-sm text-gray-500 font-mono">
-                    {u.rollNo || '—'}
-                  </TableCell>
-                  <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
-                    {u.name}
-                  </TableCell>
-                  <TableCell className="py-3 px-3 text-sm text-gray-700">
-                    {u.class || '—'}
-                    {u.section ? `-${u.section}` : ''}
-                  </TableCell>
-                  <TableCell className="py-3 px-3 text-sm text-gray-500">
-                    {u.fatherName || u.guardian || '—'}
-                  </TableCell>
-                  <TableCell className="py-3 px-3">
-                    <StatusBadge status={u.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {recentStudents.map((u) => {
+                const locked = isLocked(u);
+                return (
+                  <TableRow key={u.id} className="border-gray-100 hover:bg-gray-50">
+                    <TableCell className="py-3 px-3 text-sm text-gray-500 font-mono">
+                      {u.rollNo || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm font-medium text-gray-900">
+                      {u.name}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-700">
+                      {u.class || '—'}
+                      {u.section ? `-${u.section}` : ''}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-500">
+                      {u.fatherName || u.guardian || '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-sm text-gray-700 text-right tabular-nums">
+                      {locked ? `Rs ${Number(u.baseFee || 0).toLocaleString()}` : '—'}
+                    </TableCell>
+                    <TableCell className="py-3 px-3 text-center">
+                      {locked ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          <Lock className="h-3 w-3" /> Locked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          <Clock className="h-3 w-3" /> Pending
+                        </span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
