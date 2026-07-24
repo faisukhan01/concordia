@@ -239,7 +239,7 @@ export function LoginPage() {
               </div>
 
               <p className="text-[11px] text-white/50 mt-4 leading-relaxed">
-                Teacher &amp; Student logins are created by the Academic Office.
+                Teacher &amp; Student logins are created by the Accountant after fee payment.
               </p>
             </div>
           </motion.div>

@@ -25,7 +25,7 @@
 //   • Money amounts: text-gray-900 font-semibold (NEVER orange / green).
 // ============================================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -80,6 +80,7 @@ import {
   CheckCircle2,
   Printer,
   ArrowLeft,
+  X,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -310,6 +311,12 @@ function LockedFeeCallout() {
 const inputCls =
   'h-10 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#F26522] focus:ring-2 focus:ring-[#F26522]/12';
 
+// Shared button class names — keeps every primary/secondary action consistent.
+const btnPrimary =
+  'bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60';
+const btnSecondary =
+  'border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors';
+
 // ───────────────────────── Constants ─────────────────────────
 
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'JazzCash', 'EasyPaisa', 'Card'];
@@ -325,6 +332,14 @@ const MISC_CHARGE_TYPES = [
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Default subject suggestions shown in the Teacher Logins tab when the
+// api.reference() endpoint fails or returns an empty list.
+const DEFAULT_SUBJECTS = [
+  'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Urdu',
+  'Islamiat', 'Pakistan Studies', 'Computer Science', 'Economics',
+  'Accounting', 'Business Studies',
 ];
 
 const fmtMoney = (n: number) => `Rs ${Number(n || 0).toLocaleString('en-PK')}`;
@@ -2341,7 +2356,7 @@ function MiscChargesView({ students }: { students: any[] }) {
   );
 }
 
-// ───────────────────────── 7. Student Logins ─────────────────────────
+// ───────────────────────── 7. Create Logins (Student + Teacher) ─────────────────────────
 
 function LoginsView({
   user,
@@ -2354,12 +2369,57 @@ function LoginsView({
   loading: boolean;
   onUpdate: (s: any) => void;
 }) {
+  const [tab, setTab] = useState<'student' | 'teacher'>('student');
+
+  // --- Student logins state (existing flow) ---
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'with' | 'without'>('all');
   const [creating, setCreating] = useState('');
   const [generated, setGenerated] = useState<
     Record<string, { rollNo: string; password: string }>
   >({});
+
+  // --- Teacher login form state (new) ---
+  const [form, setForm] = useState({
+    name: '',
+    rollNo: '',
+    email: '',
+    password: '',
+    subjects: [] as string[],
+    subjectInput: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<{ user: string; pass: string; name: string } | null>(
+    null,
+  );
+  const [suggestedSubjects, setSuggestedSubjects] = useState<string[]>([]);
+  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  // Lazy-load suggested subjects the first time the Teacher tab is opened.
+  // Falls back to the hardcoded DEFAULT_SUBJECTS list if the API fails or
+  // returns nothing.
+  useEffect(() => {
+    if (tab !== 'teacher' || suggestedLoaded) return;
+    let cancelled = false;
+    api
+      .reference()
+      .then((r) => {
+        if (cancelled) return;
+        const list =
+          Array.isArray(r?.subjects) && r.subjects.length > 0 ? r.subjects : DEFAULT_SUBJECTS;
+        setSuggestedSubjects(list);
+        setSuggestedLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSuggestedSubjects(DEFAULT_SUBJECTS);
+        setSuggestedLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, suggestedLoaded]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -2422,158 +2482,517 @@ function LoginsView({
     }
   };
 
+  // ─── Teacher form helpers ───
+
+  const addSubjects = (raw: string) => {
+    const parts = raw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
+    setForm((prev) => {
+      const merged = [...prev.subjects];
+      for (const p of parts) {
+        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
+      }
+      return { ...prev, subjects: merged, subjectInput: '' };
+    });
+  };
+
+  const removeSubject = (s: string) => {
+    setForm((prev) => ({ ...prev, subjects: prev.subjects.filter((x) => x !== s) }));
+  };
+
+  const onSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addSubjects((e.target as HTMLInputElement).value);
+    } else if (e.key === 'Backspace' && form.subjectInput === '' && form.subjects.length > 0) {
+      setForm((prev) => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
+    }
+  };
+
+  // --- Password strength meter (simple) ---
+  const pwLevel: 'empty' | 'weak' | 'medium' | 'strong' = (() => {
+    if (!form.password) return 'empty';
+    const len = form.password.length;
+    const hasLetter = /[a-zA-Z]/.test(form.password);
+    const hasNum = /[0-9]/.test(form.password);
+    if (len < 6) return 'weak';
+    if (len >= 10 && hasLetter && hasNum) return 'strong';
+    return 'medium';
+  })();
+
+  const strengthMeta: Record<
+    'empty' | 'weak' | 'medium' | 'strong',
+    { label: string; color: string; bar: string; width: string }
+  > = {
+    empty: { label: '', color: '', bar: '', width: '0%' },
+    weak: { label: 'Weak', color: 'text-red-600', bar: 'bg-red-500', width: '33%' },
+    medium: { label: 'Medium', color: 'text-amber-600', bar: 'bg-amber-500', width: '66%' },
+    strong: { label: 'Strong', color: 'text-emerald-600', bar: 'bg-emerald-500', width: '100%' },
+  };
+  const sm = strengthMeta[pwLevel];
+
+  const submitTeacher = async () => {
+    if (!form.name || !form.rollNo) {
+      toast({ title: 'Name and Teacher ID are required', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const password = form.password || 'teacher' + Math.floor(1000 + Math.random() * 9000);
+      const email = form.email || `${form.rollNo.toLowerCase()}@concordia.edu.pk`;
+      // Flush any un-committed subject text so it isn't lost on submit.
+      let subjects = form.subjects;
+      if (form.subjectInput.trim()) {
+        const parts = form.subjectInput
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        subjects = [...form.subjects];
+        for (const p of parts) {
+          if (!subjects.some((s) => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
+        }
+      }
+      await api.createPlatformUser({
+        name: form.name,
+        email,
+        rollNo: form.rollNo,
+        password,
+        role: 'teacher',
+        branchId: user?.branchId,
+        instituteId: user?.instituteId,
+        subjects: JSON.stringify(subjects),
+        title: 'Teacher',
+      });
+      setCreated({ user: form.rollNo, pass: password, name: form.name });
+      setForm({
+        name: '',
+        rollNo: '',
+        email: '',
+        password: '',
+        subjects: [],
+        subjectInput: '',
+      });
+      toast({
+        title: 'Teacher login created',
+        description: `${form.name} — username ${form.rollNo}`,
+      });
+    } catch (e: any) {
+      toast({
+        title: 'Failed to create login',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createAnother = () => {
+    setCreated(null);
+    // Defer focus until after the Sheet's close animation + focus-restore.
+    setTimeout(() => nameRef.current?.focus(), 300);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Student Logins"
-        subtitle="Issue login credentials — username = roll number, default password. Generated after the first fee payment."
+        title="Create Logins"
+        subtitle={
+          tab === 'student'
+            ? 'Issue login credentials to enrolled students after fee payment, or create teacher accounts.'
+            : 'Generate login credentials for teachers and students.'
+        }
       />
 
-      {/* Info callout — gray, restrained */}
-      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex gap-3">
-        <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
-        <div className="text-sm text-gray-600 leading-relaxed">
-          <p className="font-semibold text-gray-900">Per spec §3 — when to issue logins.</p>
-          <p className="mt-1">
-            Student logins are created by the Accountant after the first fee payment is
-            confirmed. The username is the student&apos;s roll number and the password is a
-            system-generated default that the student must change on first sign-in.
-          </p>
-        </div>
+      {/* Tab switcher */}
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <button
+          onClick={() => setTab('student')}
+          className={cn(
+            'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+            tab === 'student' ? 'bg-[#F26522] text-white' : 'text-gray-600 hover:bg-gray-50',
+          )}
+        >
+          Student Logins
+        </button>
+        <button
+          onClick={() => setTab('teacher')}
+          className={cn(
+            'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+            tab === 'teacher' ? 'bg-[#F26522] text-white' : 'text-gray-600 hover:bg-gray-50',
+          )}
+        >
+          Teacher Logins
+        </button>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Users} label="Total Students" value={stats.total} sub="Enrolled" />
-        <StatCard icon={KeyRound} label="With Login" value={stats.with} sub="Credentials issued" />
-        <StatCard
-          icon={AlertCircle}
-          label="Without Login"
-          value={stats.without}
-          sub="Awaiting first payment"
-        />
-      </div>
+      {/* ===== Student Logins tab (existing flow — UNCHANGED) ===== */}
+      {tab === 'student' && (
+        <>
+          {/* Info callout — gray, restrained */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex gap-3">
+            <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-600 leading-relaxed">
+              <p className="font-semibold text-gray-900">Per spec §3 — when to issue logins.</p>
+              <p className="mt-1">
+                Student logins are created by the Accountant after the first fee payment is
+                confirmed. The username is the student&apos;s roll number and the password is a
+                system-generated default that the student must change on first sign-in.
+              </p>
+            </div>
+          </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, roll #, or class…"
-              className={`${inputCls} pl-9`}
+          {/* KPI strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard icon={Users} label="Total Students" value={stats.total} sub="Enrolled" />
+            <StatCard icon={KeyRound} label="With Login" value={stats.with} sub="Credentials issued" />
+            <StatCard
+              icon={AlertCircle}
+              label="Without Login"
+              value={stats.without}
+              sub="Awaiting first payment"
             />
           </div>
-          <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
-            <SelectTrigger className={`${inputCls} w-full sm:w-48`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All students</SelectItem>
-              <SelectItem value="with">With login</SelectItem>
-              <SelectItem value="without">Without login</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      {/* Student list */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        {loading ? (
-          <SkeletonTable rows={6} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={KeyRound}
-            title={students.length === 0 ? 'No students enrolled' : 'No matching students'}
-            desc={
-              students.length === 0
-                ? 'The Admission Office must enroll students first.'
-                : 'Try a different search or filter.'
-            }
-          />
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((s) => {
-              const hasLogin = hasRealLogin(s);
-              const creds = generated[s.id];
-              return (
-                <div
-                  key={s.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-lg border border-gray-200"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-9 w-9 rounded-lg border border-gray-200 bg-gray-50 grid place-items-center shrink-0">
-                      <GraduationCap className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
-                      <p className="text-[11px] text-gray-500 truncate">
-                        {s.rollNo} · {s.class || '—'}
-                        {s.section ? `-${s.section}` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  {creds ? (
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
-                        <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
-                          Username
-                        </span>
-                        <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
-                          {creds.rollNo}
-                          <CopyButton text={creds.rollNo} />
-                        </span>
-                      </div>
-                      <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
-                        <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
-                          Password
-                        </span>
-                        <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
-                          {creds.password}
-                          <CopyButton text={creds.password} />
-                        </span>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
-                      >
-                        <Check className="h-3 w-3" /> Login Ready
-                      </Badge>
-                    </div>
-                  ) : hasLogin ? (
-                    <Badge
-                      variant="outline"
-                      className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
-                    >
-                      <Check className="h-3 w-3" /> Login Active
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-8 px-3 text-xs font-medium"
-                      onClick={() => generate(s)}
-                      disabled={creating === s.id}
-                    >
-                      {creating === s.id ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…
-                        </>
-                      ) : (
-                        <>
-                          <KeyRound className="h-3.5 w-3.5 mr-1" /> Generate Login
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
+          {/* Filters */}
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name, roll #, or class…"
+                  className={`${inputCls} pl-9`}
+                />
+              </div>
+              <Select value={filter} onValueChange={(v: any) => setFilter(v)}>
+                <SelectTrigger className={`${inputCls} w-full sm:w-48`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All students</SelectItem>
+                  <SelectItem value="with">With login</SelectItem>
+                  <SelectItem value="without">Without login</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Student list */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            {loading ? (
+              <SkeletonTable rows={6} />
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon={KeyRound}
+                title={students.length === 0 ? 'No students enrolled' : 'No matching students'}
+                desc={
+                  students.length === 0
+                    ? 'The Admission Office must enroll students first.'
+                    : 'Try a different search or filter.'
+                }
+              />
+            ) : (
+              <div className="space-y-2">
+                {filtered.map((s) => {
+                  const hasLogin = hasRealLogin(s);
+                  const creds = generated[s.id];
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg border border-gray-200 bg-gray-50 grid place-items-center shrink-0">
+                          <GraduationCap className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {s.rollNo} · {s.class || '—'}
+                            {s.section ? `-${s.section}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      {creds ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
+                            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
+                              Username
+                            </span>
+                            <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
+                              {creds.rollNo}
+                              <CopyButton text={creds.rollNo} />
+                            </span>
+                          </div>
+                          <div className="rounded-lg border border-emerald-100 bg-white px-3 py-1.5 text-xs">
+                            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">
+                              Password
+                            </span>
+                            <span className="font-mono font-semibold text-gray-900 flex items-center gap-2">
+                              {creds.password}
+                              <CopyButton text={creds.password} />
+                            </span>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
+                          >
+                            <Check className="h-3 w-3" /> Login Ready
+                          </Badge>
+                        </div>
+                      ) : hasLogin ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-50 text-emerald-700 border-emerald-100 gap-1"
+                        >
+                          <Check className="h-3 w-3" /> Login Active
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-8 px-3 text-xs font-medium"
+                          onClick={() => generate(s)}
+                          disabled={creating === s.id}
+                        >
+                          {creating === s.id ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Generating…
+                            </>
+                          ) : (
+                            <>
+                              <KeyRound className="h-3.5 w-3.5 mr-1" /> Generate Login
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ===== Teacher Logins tab (new) ===== */}
+      {tab === 'teacher' && (
+        <>
+          {/* Info callout */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex gap-3">
+            <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-600 leading-relaxed">
+              <p className="font-semibold text-gray-900">Teacher accounts are created here.</p>
+              <p className="mt-1">
+                The username is the Teacher ID and the password is auto-generated (teacher can
+                change it on first sign-in).
+              </p>
+            </div>
+          </div>
+
+          {/* Teacher creation form */}
+          <div className="rounded-xl border border-gray-200 bg-white p-5 max-w-2xl">
+            <SectionHeader
+              title="New Teacher Login"
+              desc="Credentials will be generated automatically if left blank."
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <Input
+                  ref={nameRef}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className={inputCls}
+                  placeholder="Ayesha Khan"
+                />
+              </Field>
+              <Field label="Teacher ID / Roll No" required>
+                <Input
+                  value={form.rollNo}
+                  onChange={(e) => setForm({ ...form, rollNo: e.target.value })}
+                  className={inputCls}
+                  placeholder="T001"
+                />
+              </Field>
+              <Field label="Email (optional)">
+                <Input
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className={inputCls}
+                  placeholder="auto-generated if blank"
+                />
+              </Field>
+              <Field label="Password (optional)">
+                <Input
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className={inputCls}
+                  placeholder="auto-generated if blank"
+                />
+                {pwLevel === 'empty' ? (
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Will be auto-generated (e.g. teacher4827).
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <div className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className={cn('h-full rounded-full transition-all', sm.bar)}
+                        style={{ width: sm.width }}
+                      />
+                    </div>
+                    <span className={cn('text-[11px] font-medium tabular-nums', sm.color)}>
+                      {sm.label}
+                    </span>
+                  </div>
+                )}
+              </Field>
+
+              <div className="md:col-span-2">
+                <Field label="Subjects">
+                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
+                    {form.subjects.map((s) => (
+                      <Badge
+                        key={s}
+                        variant="secondary"
+                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
+                      >
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() => removeSubject(s)}
+                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
+                          aria-label={`Remove ${s}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    <input
+                      value={form.subjectInput}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, subjectInput: e.target.value }))
+                      }
+                      onKeyDown={onSubjectKeyDown}
+                      onBlur={(e) => addSubjects(e.target.value)}
+                      placeholder={
+                        form.subjects.length === 0 ? 'Type a subject and press Enter' : ''
+                      }
+                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1.5">
+                    Press Enter or comma to add a subject.
+                  </p>
+                  {suggestedSubjects.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
+                        Suggestions
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {suggestedSubjects.slice(0, 12).map((s) => {
+                          const added = form.subjects.some(
+                            (x) => x.toLowerCase() === s.toLowerCase(),
+                          );
+                          return (
+                            <button
+                              key={s}
+                              type="button"
+                              disabled={added}
+                              onClick={() => addSubjects(s)}
+                              className={cn(
+                                'inline-flex items-center gap-1 text-[11px] font-medium rounded-md border px-2 py-1 transition-colors',
+                                added
+                                  ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                                  : 'border-gray-200 bg-white text-gray-600 hover:border-[#F26522] hover:text-[#F26522]',
+                              )}
+                            >
+                              {added ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <Plus className="h-3 w-3" />
+                              )}
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </Field>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <button onClick={submitTeacher} disabled={saving} className={btnPrimary}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Generate Login
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Credentials confirmation Sheet (teacher) */}
+      <Sheet open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
+        <SheetContent className="w-full sm:max-w-sm">
+          <SheetHeader>
+            <SheetTitle className="text-gray-900">Login Created</SheetTitle>
+            <SheetDescription>Share these credentials securely.</SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6 space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-500">Name</span>
+                </div>
+                <div className="text-sm font-semibold text-gray-900">{created?.name}</div>
+              </div>
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-500">Username</span>
+                  <CopyButton text={created?.user || ''} />
+                </div>
+                <div className="text-sm font-mono font-semibold text-gray-900">
+                  {created?.user}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-500">Password</span>
+                  <CopyButton text={created?.pass || ''} />
+                </div>
+                <div className="text-sm font-mono font-semibold text-gray-900">
+                  {created?.pass}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={createAnother}
+                className={cn(btnPrimary, 'justify-center h-10')}
+              >
+                <Plus className="h-4 w-4" /> Create Another
+              </button>
+              <button
+                onClick={() => setCreated(null)}
+                className={cn(btnSecondary, 'justify-center h-10')}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

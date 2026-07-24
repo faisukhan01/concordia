@@ -4,11 +4,11 @@
 // Concordia College — Academic Office Portal (spec §4)
 //
 // Responsibilities:
-//   1. Post announcements (all roles)
+//   1. Post announcements (targeted audiences or everyone)
 //   2. Manage teachers — add, view, assign class + section + subject
 //   3. Create + manage timetables and date sheets
 //   4. Oversee monthly tests + result-card generation
-//   5. Create teacher + student login credentials
+//   5. View enrolled students across classes
 //
 // Design language (matches admissions / admin / accountant portals):
 //   • Flat, restrained, grayscale + a single orange (#F26522) accent.
@@ -18,7 +18,7 @@
 //   • Tables: uppercase muted headers, hover row tint, subtle status badges.
 // ============================================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -57,9 +57,9 @@ import {
 } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import {
-  Users, GraduationCap, BookOpen, Calendar, FileText, Award, KeyRound,
+  Users, GraduationCap, BookOpen, Calendar, FileText, Award,
   Megaphone, CalendarDays, ClipboardList, Loader2, Search, Copy, Check,
-  Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye, X,
+  Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -290,12 +290,23 @@ function AnnouncementsView({ user }: { user: any }) {
     } finally { setSaving(false); }
   };
 
+  const audienceBadge = (role?: string | null) => {
+    if (!role) return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-orange-50 text-orange-700 border border-transparent">All</span>;
+    switch (role) {
+      case 'student': return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-transparent">Students</span>;
+      case 'teacher': return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-transparent">Teachers</span>;
+      case 'accountant': return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-transparent">Accountants</span>;
+      case 'admin': return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-transparent">Admins</span>;
+      default: return <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-orange-50 text-orange-700 border border-transparent">All</span>;
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Announcements" subtitle="Post college-wide announcements visible to all roles." />
+      <PageHeader title="Announcements" subtitle="Post announcements targeted to specific audiences or everyone." />
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <SectionHeader title="Post Announcement" desc="Visible to all roles college-wide" />
+        <SectionHeader title="Post Announcement" desc="Choose the audience for your announcement." />
         <div className="space-y-3">
           <Field label="Title" required>
             <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Monthly Test 1 Schedule" className={inputCls} />
@@ -303,20 +314,24 @@ function AnnouncementsView({ user }: { user: any }) {
           <Field label="Message" required>
             <Textarea value={msg} onChange={e => setMsg(e.target.value)} placeholder="Write your announcement…" rows={3} className="w-full rounded-lg border border-gray-200 bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#F26522] focus:ring-2 focus:ring-[#F26522]/12 resize-none" />
           </Field>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Select value={target} onValueChange={setTarget}>
-              <SelectTrigger className="w-[180px] h-9 rounded-lg border-gray-200"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="teacher">Teachers</SelectItem>
-                <SelectItem value="student">Students</SelectItem>
-                <SelectItem value="parent">Parents</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={submit} disabled={saving} className="ml-auto bg-[#F26522] hover:bg-[#D4541E] text-white h-9">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-              Publish
-            </Button>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={target} onValueChange={setTarget}>
+                <SelectTrigger className="w-[200px] h-9 rounded-lg border-gray-200"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All — Everyone</SelectItem>
+                  <SelectItem value="student">Students</SelectItem>
+                  <SelectItem value="teacher">Teachers</SelectItem>
+                  <SelectItem value="accountant">Accountants</SelectItem>
+                  <SelectItem value="admin">Admins</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={submit} disabled={saving} className="ml-auto bg-[#F26522] hover:bg-[#D4541E] text-white h-9">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+                Publish
+              </Button>
+            </div>
+            <p className="text-[11px] text-gray-500">Choose who should receive this announcement. &lsquo;All&rsquo; sends to every portal user.</p>
           </div>
         </div>
       </div>
@@ -335,7 +350,7 @@ function AnnouncementsView({ user }: { user: any }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-gray-900">{a.title}</span>
-                    {a.targetRole && <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 capitalize">→ {a.targetRole}</span>}
+                    {audienceBadge(a.targetRole)}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.message}</p>
                 </div>
@@ -498,126 +513,6 @@ function TeachersView({ user }: { user: any }) {
   );
 }
 
-// ───────────────────────── Class / Subject Assign ─────────────────────────
-function AssignView({ user }: { user: any }) {
-  const [teachers, setTeachers] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selTeacher, setSelTeacher] = useState('');
-  const [selClass, setSelClass] = useState('');
-  const [subject, setSubject] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      api.platformUsers({ role: 'teacher' }).catch(() => []),
-      api.getClasses(user?.branchId).catch(() => []),
-    ]).then(([t, c]) => {
-      if (cancelled) return;
-      setTeachers(Array.isArray(t) ? t : []);
-      setClasses(Array.isArray(c) ? c : []);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [user?.branchId]);
-
-  const assign = async () => {
-    if (!selTeacher || !selClass || !subject) { toast({ title: 'All fields are required', variant: 'destructive' }); return; }
-    setSaving(true);
-    try {
-      const t = teachers.find(x => x.id === selTeacher);
-      if (!t) return;
-      let subs: string[] = []; let cls: string[] = [];
-      try { subs = t.subjects ? (typeof t.subjects === 'string' ? JSON.parse(t.subjects) : t.subjects) : []; } catch {}
-      try { cls = t.classes ? (typeof t.classes === 'string' ? JSON.parse(t.classes) : t.classes) : []; } catch {}
-      if (!subs.includes(subject)) subs.push(subject);
-      if (!cls.includes(selClass)) cls.push(selClass);
-      await api.editUser(t.id, {
-        subjects: JSON.stringify(subs),
-        classes: JSON.stringify(cls),
-      });
-      toast({ title: 'Assignment saved', description: `${subject} → ${t.name}` });
-      setSubject(''); setSelClass('');
-      // refresh
-      api.platformUsers({ role: 'teacher' }).then(d => setTeachers(Array.isArray(d) ? d : []));
-    } catch {
-      toast({ title: 'Failed to save assignment', variant: 'destructive' });
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Class / Subject Assignment" subtitle="Assign classes and subjects to teachers." />
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <SectionHeader title="New Assignment" desc="Select a teacher, class and subject to assign." />
-        {loading ? (
-          <SkeletonTable rows={2} />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Field label="Teacher" required>
-              <Select value={selTeacher} onValueChange={setSelTeacher}>
-                <SelectTrigger className={inputCls}><SelectValue placeholder="Select teacher" /></SelectTrigger>
-                <SelectContent>
-                  {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Class" required>
-              <Select value={selClass} onValueChange={setSelClass}>
-                <SelectTrigger className={inputCls}><SelectValue placeholder="Select class" /></SelectTrigger>
-                <SelectContent>
-                  {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}{c.section ? ` — ${c.section}` : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Subject" required>
-              <Input value={subject} onChange={e => setSubject(e.target.value)} className={inputCls} placeholder="e.g. Mathematics" />
-            </Field>
-          </div>
-        )}
-        <div className="mt-4">
-          <button onClick={assign} disabled={saving} className={btnPrimary}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            Save Assignment
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <SectionHeader title="Current Assignments" />
-        {teachers.length === 0 ? (
-          <EmptyState icon={BookOpen} title="No assignments yet" />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-200">
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Teacher</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Subjects</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Classes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teachers.map(t => {
-                let subs: string[] = []; let cls: string[] = [];
-                try { subs = t.subjects ? (typeof t.subjects === 'string' ? JSON.parse(t.subjects) : t.subjects) : []; } catch {}
-                try { cls = t.classes ? (typeof t.classes === 'string' ? JSON.parse(t.classes) : t.classes) : []; } catch {}
-                return (
-                  <TableRow key={t.id} className="border-gray-100 hover:bg-gray-50">
-                    <TableCell className="text-sm font-medium text-gray-900">{t.name}</TableCell>
-                    <TableCell className="text-sm text-gray-600">{subs.join(', ') || '—'}</TableCell>
-                    <TableCell className="text-sm text-gray-600">{cls.join(', ') || '—'}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ───────────────────────── Students ─────────────────────────
 function StudentsView({ user }: { user: any }) {
   const [data, setData] = useState<any[]>([]);
@@ -655,7 +550,8 @@ function StudentsView({ user }: { user: any }) {
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Roll No</TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Name</TableHead>
                 <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Class</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Guardian</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Father / Guardian</TableHead>
+                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Contact</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -664,328 +560,14 @@ function StudentsView({ user }: { user: any }) {
                   <TableCell className="text-sm text-gray-700 font-mono">{s.rollNo || '—'}</TableCell>
                   <TableCell className="text-sm font-medium text-gray-900">{s.name}</TableCell>
                   <TableCell className="text-sm text-gray-600">{s.class ? `${s.class}${s.section ? ` — ${s.section}` : ''}` : '—'}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{s.guardian || '—'}</TableCell>
+                  <TableCell className="text-sm text-gray-600">{s.guardian || s.fatherName || '—'}</TableCell>
+                  <TableCell className="text-sm text-gray-600">{s.guardianPhone || '—'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </div>
-    </div>
-  );
-}
-
-// ───────────────────────── Create Logins ─────────────────────────
-function LoginsView({ user }: { user: any }) {
-  const [tab, setTab] = useState<'teacher' | 'student'>('teacher');
-  const [form, setForm] = useState({
-    name: '', rollNo: '', email: '', password: '',
-    class: '', classId: '', section: '',
-    subjects: [] as string[],
-    subjectInput: '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [created, setCreated] = useState<{ user: string; pass: string; name: string } | null>(null);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [classesLoading, setClassesLoading] = useState(false);
-  const [classesLoaded, setClassesLoaded] = useState(false);
-  const [suggestedSubjects, setSuggestedSubjects] = useState<string[]>([]);
-  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
-
-  // Lazy-load classes the first time the Student tab is opened.
-  useEffect(() => {
-    if (tab !== 'student' || classesLoaded) return;
-    let cancelled = false;
-    setClassesLoading(true);
-    api.getClasses(user?.branchId)
-      .then(d => { if (cancelled) return; setClasses(Array.isArray(d) ? d : []); setClassesLoaded(true); })
-      .catch(() => { if (!cancelled) setClasses([]); })
-      .finally(() => { if (!cancelled) setClassesLoading(false); });
-    return () => { cancelled = true; };
-  }, [tab, user?.branchId, classesLoaded]);
-
-  // Lazy-load suggested subjects the first time the Teacher tab is opened.
-  useEffect(() => {
-    if (tab !== 'teacher' || suggestedLoaded) return;
-    let cancelled = false;
-    api.reference()
-      .then(r => { if (cancelled) return; setSuggestedSubjects(Array.isArray(r?.subjects) ? r.subjects : []); setSuggestedLoaded(true); })
-      .catch(() => { if (!cancelled) setSuggestedSubjects([]); });
-    return () => { cancelled = true; };
-  }, [tab, suggestedLoaded]);
-
-  // --- Subjects chip helpers ---
-  const addSubjects = (raw: string) => {
-    const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
-    if (parts.length === 0) return;
-    setForm(prev => {
-      const merged = [...prev.subjects];
-      for (const p of parts) {
-        if (!merged.some(s => s.toLowerCase() === p.toLowerCase())) merged.push(p);
-      }
-      return { ...prev, subjects: merged, subjectInput: '' };
-    });
-  };
-
-  const removeSubject = (s: string) => {
-    setForm(prev => ({ ...prev, subjects: prev.subjects.filter(x => x !== s) }));
-  };
-
-  const onSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addSubjects((e.target as HTMLInputElement).value);
-    } else if (e.key === 'Backspace' && form.subjectInput === '' && form.subjects.length > 0) {
-      setForm(prev => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
-    }
-  };
-
-  // --- Password strength ---
-  const pwLevel: 'empty' | 'weak' | 'medium' | 'strong' = (() => {
-    if (!form.password) return 'empty';
-    const len = form.password.length;
-    const hasLetter = /[a-zA-Z]/.test(form.password);
-    const hasNum = /[0-9]/.test(form.password);
-    if (len < 6) return 'weak';
-    if (len >= 10 && hasLetter && hasNum) return 'strong';
-    return 'medium';
-  })();
-
-  const strengthMeta: Record<'empty' | 'weak' | 'medium' | 'strong', { label: string; color: string; bar: string; width: string }> = {
-    empty: { label: '', color: '', bar: '', width: '0%' },
-    weak: { label: 'Weak', color: 'text-red-600', bar: 'bg-red-500', width: '33%' },
-    medium: { label: 'Medium', color: 'text-amber-600', bar: 'bg-amber-500', width: '66%' },
-    strong: { label: 'Strong', color: 'text-emerald-600', bar: 'bg-emerald-500', width: '100%' },
-  };
-  const sm = strengthMeta[pwLevel];
-
-  const submit = async () => {
-    if (!form.name || !form.rollNo) { toast({ title: 'Name and ID are required', variant: 'destructive' }); return; }
-    if (tab === 'student' && !form.classId) { toast({ title: 'Please select a class', variant: 'destructive' }); return; }
-    setSaving(true);
-    try {
-      const password = form.password || (tab === 'teacher' ? 'teacher' : 'student') + Math.floor(1000 + Math.random() * 9000);
-      const email = form.email || `${form.rollNo.toLowerCase()}@concordia.edu.pk`;
-      // Flush any un-committed subject text so it isn't lost on submit.
-      let subjects = form.subjects;
-      if (tab === 'teacher' && form.subjectInput.trim()) {
-        const parts = form.subjectInput.split(',').map(s => s.trim()).filter(Boolean);
-        subjects = [...form.subjects];
-        for (const p of parts) {
-          if (!subjects.some(s => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
-        }
-      }
-      await api.createPlatformUser({
-        name: form.name, email, rollNo: form.rollNo, password, role: tab,
-        branchId: user?.branchId, instituteId: user?.instituteId,
-        ...(tab === 'teacher'
-          ? { subjects: JSON.stringify(subjects), title: 'Teacher' }
-          : { class: form.class, classId: form.classId, section: form.section, guardian: '' }),
-      });
-      setCreated({ user: form.rollNo, pass: password, name: form.name });
-      setForm({
-        name: '', rollNo: '', email: '', password: '',
-        class: '', classId: '', section: '',
-        subjects: [], subjectInput: '',
-      });
-    } catch {
-      toast({ title: 'Failed to create login', variant: 'destructive' });
-    } finally { setSaving(false); }
-  };
-
-  const onClassChange = (classId: string) => {
-    const cls = classes.find(c => c.id === classId);
-    setForm(prev => ({ ...prev, classId, class: cls?.name || '', section: cls?.section || '' }));
-  };
-
-  const createAnother = () => {
-    setCreated(null);
-    // Defer focus until after the Sheet's close animation + focus-restore.
-    setTimeout(() => nameRef.current?.focus(), 300);
-  };
-
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Create Logins" subtitle="Generate login credentials for teachers and students." />
-
-      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
-        <button onClick={() => setTab('teacher')} className={cn('px-4 py-1.5 rounded-md text-sm font-medium transition-colors', tab === 'teacher' ? 'bg-[#F26522] text-white' : 'text-gray-600 hover:bg-gray-50')}>Teacher</button>
-        <button onClick={() => setTab('student')} className={cn('px-4 py-1.5 rounded-md text-sm font-medium transition-colors', tab === 'student' ? 'bg-[#F26522] text-white' : 'text-gray-600 hover:bg-gray-50')}>Student</button>
-      </div>
-
-      <div className="rounded-xl border border-gray-200 bg-white p-5 max-w-2xl">
-        <SectionHeader title={`New ${tab === 'teacher' ? 'Teacher' : 'Student'} Login`} desc="Credentials will be generated automatically if left blank." />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Full Name" required>
-            <Input
-              ref={nameRef}
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              className={inputCls}
-              placeholder={tab === 'teacher' ? 'Ayesha Khan' : 'Ali Ahmed'}
-            />
-          </Field>
-          <Field label={tab === 'teacher' ? 'Teacher ID' : 'Roll Number'} required>
-            <Input value={form.rollNo} onChange={e => setForm({ ...form, rollNo: e.target.value })} className={inputCls} placeholder={tab === 'teacher' ? 'T001' : 'S001'} />
-          </Field>
-          <Field label="Email (optional)">
-            <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={inputCls} placeholder="auto-generated if blank" />
-          </Field>
-          <Field label="Password (optional)">
-            <Input value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className={inputCls} placeholder="auto-generated if blank" />
-            {pwLevel === 'empty' ? (
-              <p className="text-[11px] text-gray-500 mt-1.5">Will be auto-generated (e.g. teacher4827).</p>
-            ) : (
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
-                  <div className={cn('h-full rounded-full transition-all', sm.bar)} style={{ width: sm.width }} />
-                </div>
-                <span className={cn('text-[11px] font-medium tabular-nums', sm.color)}>{sm.label}</span>
-              </div>
-            )}
-          </Field>
-          {tab === 'teacher' && (
-            <div className="md:col-span-2">
-              <Field label="Subjects">
-                <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
-                  {form.subjects.map(s => (
-                    <Badge key={s} variant="secondary" className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs">
-                      {s}
-                      <button
-                        type="button"
-                        onClick={() => removeSubject(s)}
-                        className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
-                        aria-label={`Remove ${s}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                  <input
-                    value={form.subjectInput}
-                    onChange={e => setForm(prev => ({ ...prev, subjectInput: e.target.value }))}
-                    onKeyDown={onSubjectKeyDown}
-                    onBlur={e => addSubjects(e.target.value)}
-                    placeholder={form.subjects.length === 0 ? 'Type a subject and press Enter' : ''}
-                    className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
-                  />
-                </div>
-                <p className="text-[11px] text-gray-500 mt-1.5">Press Enter or comma to add a subject.</p>
-                {suggestedSubjects.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Suggestions</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {suggestedSubjects.slice(0, 12).map(s => {
-                        const added = form.subjects.some(x => x.toLowerCase() === s.toLowerCase());
-                        return (
-                          <button
-                            key={s}
-                            type="button"
-                            disabled={added}
-                            onClick={() => addSubjects(s)}
-                            className={cn(
-                              'inline-flex items-center gap-1 text-[11px] font-medium rounded-md border px-2 py-1 transition-colors',
-                              added
-                                ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                                : 'border-gray-200 bg-white text-gray-600 hover:border-[#F26522] hover:text-[#F26522]',
-                            )}
-                          >
-                            {added ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                            {s}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </Field>
-            </div>
-          )}
-          {tab === 'student' && (
-            <>
-              <Field label="Class" required>
-                <Select value={form.classId} onValueChange={onClassChange} disabled={classesLoading}>
-                  <SelectTrigger className="w-full rounded-lg border-gray-200 bg-white" style={{ height: '2.5rem' }}>
-                    <SelectValue placeholder={classesLoading ? 'Loading classes…' : 'Select a class'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classesLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading classes…
-                      </div>
-                    ) : classes.length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-gray-500 max-w-[260px]">
-                        No classes yet. Create classes first from the Classes module.
-                      </div>
-                    ) : (
-                      classes.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}{c.section ? ` — ${c.section}` : ''}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Section">
-                <Input
-                  value={form.section}
-                  disabled
-                  placeholder="—"
-                  className={cn(inputCls, 'bg-gray-50 text-gray-500')}
-                />
-                <p className="text-[11px] text-gray-500 mt-1.5">Section is determined by the selected class.</p>
-              </Field>
-            </>
-          )}
-        </div>
-        <div className="mt-5">
-          <button onClick={submit} disabled={saving} className={btnPrimary}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            Generate Login
-          </button>
-        </div>
-      </div>
-
-      <Sheet open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
-        <SheetContent className="w-full sm:max-w-sm">
-          <SheetHeader>
-            <SheetTitle className="text-gray-900">Login Created</SheetTitle>
-            <SheetDescription>Share these credentials securely.</SheetDescription>
-          </SheetHeader>
-          <div className="px-4 pb-6 space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-500">Name</span>
-                </div>
-                <div className="text-sm font-semibold text-gray-900">{created?.name}</div>
-              </div>
-              <div className="pt-2 border-t border-gray-200">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-500">Username</span>
-                  <CopyButton text={created?.user || ''} />
-                </div>
-                <div className="text-sm font-mono font-semibold text-gray-900">{created?.user}</div>
-              </div>
-              <div className="pt-2 border-t border-gray-200">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-500">Password</span>
-                  <CopyButton text={created?.pass || ''} />
-                </div>
-                <div className="text-sm font-mono font-semibold text-gray-900">{created?.pass}</div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={createAnother} className={cn(btnPrimary, 'justify-center h-10')}>
-                <Plus className="h-4 w-4" /> Create Another
-              </button>
-              <button onClick={() => setCreated(null)} className={cn(btnSecondary, 'justify-center h-10')}>Done</button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
@@ -1852,13 +1434,8 @@ function ClassesView({ user }: { user: any }) {
                     </h4>
                     {clsTeachers.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center">
-                        <p className="text-xs text-gray-500 mb-2">No teachers assigned to this class yet.</p>
-                        <button
-                          onClick={() => toast({ title: 'Open Class / Subject Assign to assign teachers' })}
-                          className="text-xs text-[#F26522] hover:underline font-medium inline-flex items-center gap-1"
-                        >
-                          Assign teachers <ChevronRight className="h-3 w-3" />
-                        </button>
+                        <p className="text-xs text-gray-500 mb-1">No teachers assigned to this class yet.</p>
+                        <p className="text-[11px] text-gray-400">Teachers are assigned to classes via the Accountant &rsquo; s Create Logins page or by editing a teacher&rsquo;s class list from the Teachers module.</p>
                       </div>
                     ) : (
                       <div className="space-y-1">
@@ -1901,9 +1478,7 @@ export function AcademicPortal({ activeModule, user }: Props) {
     case 'academic-announcements': return <AnnouncementsView user={user} />;
     case 'academic-classes': return <ClassesView user={user} />;
     case 'academic-teachers': return <TeachersView user={user} />;
-    case 'academic-assign': return <AssignView user={user} />;
     case 'academic-students': return <StudentsView user={user} />;
-    case 'academic-logins': return <LoginsView user={user} />;
     case 'timetable': return <TimetableView user={user} />;
     case 'academic-datesheet': return <DateSheetView user={user} />;
     case 'academic-tests': return <TestsView user={user} />;

@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { User, Lock, Eye, EyeOff, CheckCircle2, Mail, Shield, Loader2 } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, CheckCircle2, Mail, Shield, Loader2, Phone } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 export function SettingsPage({ user }: { user: any }) {
@@ -90,6 +90,18 @@ export function SettingsPage({ user }: { user: any }) {
             <div className="rounded-xl bg-muted/40 p-3">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Roll No / ID</div>
               <div className="font-medium text-sm mt-0.5 font-mono">{user.rollNo}</div>
+            </div>
+          )}
+          {(user?.guardian || user?.fatherName) && (
+            <div className="rounded-xl bg-muted/40 p-3">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Father / Guardian</div>
+              <div className="font-medium text-sm mt-0.5">{user?.guardian || user?.fatherName || '—'}</div>
+            </div>
+          )}
+          {user?.guardianPhone && (
+            <div className="rounded-xl bg-muted/40 p-3">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Father / Guardian Contact</div>
+              <div className="font-medium text-sm mt-0.5 flex items-center gap-1.5"><Phone className="h-3 w-3 text-muted-foreground" /> {user.guardianPhone}</div>
             </div>
           )}
           {user?.instituteName && (

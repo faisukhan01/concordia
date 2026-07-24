@@ -315,7 +315,7 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
     if (method === 'POST' && path === 'platform/users') {
       const user = await requireAuth(req);
       requireRole(user, 'branch-manager', 'institute-admin', 'super-admin');
-      const { name, email, password, role, instituteId, branchId, rollNo, class: cls, section, subjects, classes, classId, courseIds } = body || {};
+      const { name, email, password, role, instituteId, branchId, rollNo, class: cls, section, subjects, classes, classId, courseIds, fatherName, guardian, guardianPhone, cnic, dob, address, prevResult, program, photoUrl, baseFee, baseFeeLocked } = body || {};
       if (!name || !password || !role) return NextResponse.json({ error: 'Name, password and role required' }, { status: 400 });
       if (role === 'teacher' || role === 'student') {
         if (!rollNo) return NextResponse.json({ error: 'Roll Number/ID is required' }, { status: 400 });
@@ -337,11 +337,14 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       const classesJson = classes ? JSON.stringify(classes) : null;
 
       await db.execute({
-        sql: `INSERT INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, class, section, guardian, subjects, classes, createdById)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO users (id, name, email, rollNo, password, role, status, title, mustChangePassword, blocked, instituteId, branchId, class, section, guardian, guardianPhone, fatherName, cnic, dob, address, prevResult, program, photoUrl, baseFee, baseFeeLocked, subjects, classes, createdById)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [id, name, email || null, rollNo || null, password, role, 'Active',
           role === 'teacher' ? 'Teacher' : role === 'student' ? 'Student' : role, 1, 0,
-          instId, brId, cls || null, section || 'A', null, subjectsJson, classesJson, user.id],
+          instId, brId, cls || null, section || 'A', guardian || null, guardianPhone || null,
+          fatherName || null, cnic || null, dob || null, address || null, prevResult || null,
+          program || null, photoUrl || null, baseFee != null ? Number(baseFee) : null,
+          baseFeeLocked ? 1 : 0, subjectsJson, classesJson, user.id],
       });
 
       if (brId) {
@@ -366,7 +369,7 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
     if (method === 'PATCH' && pathSegments[0] === 'platform' && pathSegments[1] === 'users' && pathSegments.length === 3) {
       const user = await requireAuth(req);
       const id = pathSegments[2];
-      const { name, email, password, blocked, classId, addCourseIds } = body || {};
+      const { name, email, password, blocked, classId, addCourseIds, fatherName, guardian, guardianPhone, cnic, dob, address, prevResult, program, photoUrl, baseFee, baseFeeLocked, class: cls, section, subjects, classes, rollNo } = body || {};
       const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
       if (r.rows.length === 0) return NextResponse.json({ error: 'User not found' }, { status: 404 });
       const target = r.rows[0] as any;
@@ -380,6 +383,22 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
         await db.execute({ sql: 'UPDATE users SET blocked = ? WHERE id = ?', args: [blocked ? 1 : 0, target.id] });
         if (blocked) await db.execute({ sql: 'DELETE FROM sessions WHERE userId = ?', args: [target.id] });
       }
+      if (fatherName !== undefined) await db.execute({ sql: 'UPDATE users SET fatherName = ? WHERE id = ?', args: [fatherName || null, target.id] });
+      if (guardian !== undefined) await db.execute({ sql: 'UPDATE users SET guardian = ? WHERE id = ?', args: [guardian || null, target.id] });
+      if (guardianPhone !== undefined) await db.execute({ sql: 'UPDATE users SET guardianPhone = ? WHERE id = ?', args: [guardianPhone || null, target.id] });
+      if (cnic !== undefined) await db.execute({ sql: 'UPDATE users SET cnic = ? WHERE id = ?', args: [cnic || null, target.id] });
+      if (dob !== undefined) await db.execute({ sql: 'UPDATE users SET dob = ? WHERE id = ?', args: [dob || null, target.id] });
+      if (address !== undefined) await db.execute({ sql: 'UPDATE users SET address = ? WHERE id = ?', args: [address || null, target.id] });
+      if (prevResult !== undefined) await db.execute({ sql: 'UPDATE users SET prevResult = ? WHERE id = ?', args: [prevResult || null, target.id] });
+      if (program !== undefined) await db.execute({ sql: 'UPDATE users SET program = ? WHERE id = ?', args: [program || null, target.id] });
+      if (photoUrl !== undefined) await db.execute({ sql: 'UPDATE users SET photoUrl = ? WHERE id = ?', args: [photoUrl || null, target.id] });
+      if (baseFee !== undefined) await db.execute({ sql: 'UPDATE users SET baseFee = ? WHERE id = ?', args: [baseFee != null ? Number(baseFee) : null, target.id] });
+      if (baseFeeLocked !== undefined) await db.execute({ sql: 'UPDATE users SET baseFeeLocked = ? WHERE id = ?', args: [baseFeeLocked ? 1 : 0, target.id] });
+      if (cls !== undefined) await db.execute({ sql: 'UPDATE users SET class = ? WHERE id = ?', args: [cls || null, target.id] });
+      if (section !== undefined) await db.execute({ sql: 'UPDATE users SET section = ? WHERE id = ?', args: [section || null, target.id] });
+      if (subjects !== undefined) await db.execute({ sql: 'UPDATE users SET subjects = ? WHERE id = ?', args: [subjects ? JSON.stringify(subjects) : null, target.id] });
+      if (classes !== undefined) await db.execute({ sql: 'UPDATE users SET classes = ? WHERE id = ?', args: [classes ? JSON.stringify(classes) : null, target.id] });
+      if (rollNo !== undefined) await db.execute({ sql: 'UPDATE users SET rollNo = ? WHERE id = ?', args: [rollNo || null, target.id] });
       if (classId && addCourseIds && addCourseIds.length > 0) {
         for (const courseId of addCourseIds) {
           const tccId = nextId('TCC');

@@ -94,6 +94,7 @@ export async function initDB() {
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN prevResult TEXT', args: [] }); } catch {}
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN program TEXT', args: [] }); } catch {}
   try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN photoUrl TEXT', args: [] }); } catch {}
+  try { await db.execute({ sql: 'ALTER TABLE users ADD COLUMN guardianPhone TEXT', args: [] }); } catch {}
   } // end schema init block
 
   // === Data seeding — runs on EVERY call (idempotent, cheap SELECT-then-INSERT) ===

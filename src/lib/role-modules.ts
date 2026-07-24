@@ -18,7 +18,7 @@ import {
   LayoutDashboard, Building2, Network, Users, DollarSign, TrendingUp, Settings, ShieldCheck,
   CalendarCheck, GraduationCap, BookOpen, MessageSquare, Trophy,
   ClipboardList, FileText, Bell, CreditCard, Calendar, Award,
-  UserPlus, UserCog, Receipt, CalendarDays, Megaphone, BookMarked, KeyRound,
+  UserPlus, UserCog, Receipt, CalendarDays, Megaphone, KeyRound,
   MessageCircle, FileSpreadsheet, Inbox, CheckCircle2,
 } from 'lucide-react';
 
@@ -119,15 +119,13 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'accountant:accountant-challans', name: 'Fee Challans', icon: Receipt, color: SECONDARY },
       { id: 'accountant:accountant-installments', name: 'Installments', icon: ClipboardList, color: SECONDARY },
       { id: 'accountant:accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
-      { id: 'accountant:accountant-logins', name: 'Student Logins', icon: KeyRound, color: SECONDARY },
+      { id: 'accountant:accountant-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
     ]},
     { group: 'Academic Office', items: [
-      { id: 'academic:academic-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+      { id: 'academic:academic-announcements', name: 'Announcements', icon: Megaphone, color: PRIMARY },
       { id: 'academic:academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'academic:academic-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
-      { id: 'academic:academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: SECONDARY },
       { id: 'academic:academic-students', name: 'Students', icon: GraduationCap, color: SECONDARY },
-      { id: 'academic:academic-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
       { id: 'academic:timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
       { id: 'academic:academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'academic:academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
@@ -167,7 +165,7 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'accountant-challans', name: 'Fee Challans', icon: Receipt, color: SECONDARY },
       { id: 'accountant-installments', name: 'Installments', icon: ClipboardList, color: SECONDARY },
       { id: 'accountant-misc', name: 'Miscellaneous Charges', icon: DollarSign, color: SECONDARY },
-      { id: 'accountant-logins', name: 'Student Logins', icon: KeyRound, color: SECONDARY },
+      { id: 'accountant-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
     ]},
     { group: 'Account', flat: true, items: [
       { id: 'settings', name: 'Settings', icon: Settings, color: SECONDARY },
@@ -181,14 +179,12 @@ export const ROLE_MODULES: RoleModules = {
   'academic': [
     { group: 'Overview', items: [
       { id: 'academic-overview', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
-      { id: 'academic-announcements', name: 'Announcements', icon: Megaphone, color: SECONDARY },
+      { id: 'academic-announcements', name: 'Announcements', icon: Megaphone, color: PRIMARY },
     ]},
     { group: 'Classes & Staff', items: [
       { id: 'academic-classes', name: 'Classes', icon: BookOpen, color: PRIMARY },
       { id: 'academic-teachers', name: 'Teachers', icon: Users, color: PRIMARY },
-      { id: 'academic-assign', name: 'Class / Subject Assign', icon: BookMarked, color: SECONDARY },
       { id: 'academic-students', name: 'Students', icon: GraduationCap, color: SECONDARY },
-      { id: 'academic-logins', name: 'Create Logins', icon: KeyRound, color: PRIMARY },
     ]},
     { group: 'Academics', items: [
       { id: 'timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },

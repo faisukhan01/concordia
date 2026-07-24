@@ -88,6 +88,7 @@ import {
   X,
   Download,
   Eye,
+  Phone,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -575,6 +576,9 @@ function OverviewView({
 // ---------------------------------------------------------------------------
 type EnrollForm = {
   name: string;
+  // fatherName is kept on the type for backward-compat with the submit
+  // body (the fatherName column mirrors `guardian`), but the form itself
+  // only collects `guardian` ("Father / Guardian Name").
   fatherName: string;
   cnic: string;
   dob: string;
@@ -585,6 +589,7 @@ type EnrollForm = {
   section: string;
   rollNo: string;
   guardian: string;
+  guardianPhone: string;
   baseFee: string;
   photoUrl: string;
 };
@@ -601,6 +606,7 @@ const emptyForm: EnrollForm = {
   section: '',
   rollNo: '',
   guardian: '',
+  guardianPhone: '',
   baseFee: '',
   photoUrl: '',
 };
@@ -698,7 +704,7 @@ function NewEnrollmentView({
   // touched so their inline hints appear, and shows a single toast.
   const validateStep = (n: 1 | 2 | 3): boolean => {
     if (n === 1) {
-      const required: (keyof EnrollForm)[] = ['name', 'fatherName', 'cnic'];
+      const required: (keyof EnrollForm)[] = ['name', 'guardian', 'cnic'];
       const missing = required.filter((k) => !form[k].trim());
       if (missing.length) {
         setTouched((t) => {
@@ -802,8 +808,11 @@ function NewEnrollmentView({
       classId: form.classId,
       section: form.section || selectedClass?.section || 'A',
       guardian: form.guardian.trim() || null,
+      // Merged field — also mirrors guardian into the legacy fatherName
+      // column for backward compat with the academic portal / CSV / etc.
+      fatherName: form.guardian.trim(),
+      guardianPhone: form.guardianPhone.trim() || null,
       // Concordia admissions fields (spec §2.1)
-      fatherName: form.fatherName.trim(),
       cnic: form.cnic.trim(),
       dob: form.dob || null,
       address: form.address.trim() || null,
@@ -1028,15 +1037,26 @@ function NewEnrollmentView({
               />
               {err('name', 'Student name')}
             </Field>
-            <Field label="Father's Name" required>
+            <Field label="Father / Guardian Name" required>
               <Input
-                value={form.fatherName}
-                onChange={(e) => set('fatherName', e.target.value)}
-                onBlur={() => markTouched('fatherName')}
+                value={form.guardian}
+                onChange={(e) => set('guardian', e.target.value)}
+                onBlur={() => markTouched('guardian')}
                 placeholder="e.g. Muhammad Raza"
                 className={inputCls}
               />
-              {err('fatherName', "Father's name")}
+              {err('guardian', 'Father / Guardian name')}
+            </Field>
+            <Field label="Father / Guardian Contact Number">
+              <div className="relative">
+                <Phone className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={form.guardianPhone}
+                  onChange={(e) => set('guardianPhone', e.target.value)}
+                  placeholder="e.g. 0300-1234567"
+                  className={`${inputCls} pl-9`}
+                />
+              </div>
             </Field>
             <Field label="CNIC / B-Form Number" required>
               <div className="relative">
@@ -1069,14 +1089,6 @@ function NewEnrollmentView({
                   className={`${inputCls} pl-9`}
                 />
               </div>
-            </Field>
-            <Field label="Guardian Name">
-              <Input
-                value={form.guardian}
-                onChange={(e) => set('guardian', e.target.value)}
-                placeholder="e.g. Muhammad Raza"
-                className={inputCls}
-              />
             </Field>
             <Field label="Previous Academic Result">
               <Input
@@ -1357,7 +1369,7 @@ function NewEnrollmentView({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <Row label="Student" value={form.name || '—'} />
-              <Row label="Father" value={form.fatherName || '—'} />
+              <Row label="Father / Guardian" value={form.guardian || '—'} />
               <Row label="CNIC" value={form.cnic || '—'} mono />
               <Row label="Program" value={form.program || '—'} />
               <Row
@@ -1445,6 +1457,7 @@ function StudentRecordsView({
       if (!q) return true;
       return (
         s.name?.toLowerCase().includes(q) ||
+        s.guardian?.toLowerCase().includes(q) ||
         s.fatherName?.toLowerCase().includes(q) ||
         s.rollNo?.toLowerCase().includes(q) ||
         s.cnic?.toLowerCase().includes(q)
@@ -1479,7 +1492,7 @@ function StudentRecordsView({
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, father, roll #, or CNIC…"
+              placeholder="Search by name, father / guardian, roll #, or CNIC…"
               className={`${inputCls} pl-9`}
             />
           </div>
@@ -1529,7 +1542,10 @@ function StudentRecordsView({
                     Name
                   </TableHead>
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                    Father
+                    Father / Guardian
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Contact
                   </TableHead>
                   <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
                     Class
@@ -1558,7 +1574,10 @@ function StudentRecordsView({
                       {s.name}
                     </TableCell>
                     <TableCell className="text-sm text-gray-700">
-                      {s.fatherName || '—'}
+                      {s.guardian || s.fatherName || '—'}
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-700">
+                      {s.guardianPhone || '—'}
                     </TableCell>
                     <TableCell className="text-sm text-gray-700">
                       {s.class || '—'}
@@ -1632,6 +1651,7 @@ function EditStudentSheet({
         prevResult: student.prevResult || '',
         program: student.program || '',
         guardian: student.guardian || '',
+        guardianPhone: student.guardianPhone || '',
         section: student.section || 'A',
       });
     }
@@ -1648,13 +1668,15 @@ function EditStudentSheet({
     const body: any = {
       name: form.name.trim(),
       // admissions fields (a later backend task persists these via the same PATCH)
-      fatherName: form.fatherName.trim(),
+      // Merged field — fatherName mirrors guardian for backward compat.
+      fatherName: form.guardian.trim(),
+      guardian: form.guardian.trim(),
+      guardianPhone: form.guardianPhone.trim(),
       cnic: form.cnic.trim(),
       dob: form.dob || null,
       address: form.address.trim(),
       prevResult: form.prevResult.trim(),
       program: form.program,
-      guardian: form.guardian.trim(),
       section: form.section,
     };
     try {
@@ -1700,13 +1722,26 @@ function EditStudentSheet({
               className={inputCls}
             />
           </Field>
-          <Field label="Father's Name">
-            <Input
-              value={form.fatherName}
-              onChange={(e) => set('fatherName', e.target.value)}
-              className={inputCls}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Father / Guardian Name">
+              <Input
+                value={form.guardian}
+                onChange={(e) => set('guardian', e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Father / Guardian Contact">
+              <div className="relative">
+                <Phone className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={form.guardianPhone}
+                  onChange={(e) => set('guardianPhone', e.target.value)}
+                  placeholder="e.g. 0300-1234567"
+                  className={`${inputCls} pl-9`}
+                />
+              </div>
+            </Field>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="CNIC / B-Form">
               <Input
@@ -1738,22 +1773,13 @@ function EditStudentSheet({
               </SelectContent>
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Section">
-              <Input
-                value={form.section}
-                onChange={(e) => set('section', e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-            <Field label="Guardian">
-              <Input
-                value={form.guardian}
-                onChange={(e) => set('guardian', e.target.value)}
-                className={inputCls}
-              />
-            </Field>
-          </div>
+          <Field label="Section">
+            <Input
+              value={form.section}
+              onChange={(e) => set('section', e.target.value)}
+              className={inputCls}
+            />
+          </Field>
           <Field label="Previous Result">
             <Input
               value={form.prevResult}
@@ -1815,7 +1841,8 @@ function exportFeeCsv(students: any[]) {
   const headers = [
     'RollNo',
     'Name',
-    'FatherName',
+    'Father/Guardian',
+    'Contact',
     'Class',
     'Section',
     'Program',
@@ -1830,7 +1857,8 @@ function exportFeeCsv(students: any[]) {
     [
       s.rollNo || '',
       s.name || '',
-      s.fatherName || '',
+      s.guardian || s.fatherName || '',
+      s.guardianPhone || '',
       s.class || '',
       s.section || '',
       s.program || '',
@@ -1929,7 +1957,10 @@ function StudentFeeDetailSheet({
 
             {/* Personal info */}
             <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-2">
-              <Row label="Father's Name" value={student.fatherName || '—'} />
+              <Row label="Father / Guardian" value={student.guardian || student.fatherName || '—'} />
+              {student.guardianPhone && (
+                <Row label="Father / Guardian Contact" value={student.guardianPhone} />
+              )}
               <Row label="CNIC / B-Form" value={student.cnic || '—'} mono />
               <Row label="Date of Birth" value={formatDate(student.dob)} />
             </div>
