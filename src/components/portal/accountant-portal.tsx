@@ -89,8 +89,21 @@ import {
   ChevronDown,
   ChevronRight,
   Wallet,
+  Trash2,
+  ShieldBan,
+  AlertTriangle,
+  Ban,
 } from 'lucide-react';
 import { buildFeeChallan, savePdf } from '@/lib/pdf-utils';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 type Props = { activeModule: string; user: any };
 
@@ -460,9 +473,13 @@ export function AccountantPortal({ activeModule, user }: Props) {
   };
 
   // Optimistic local upsert — keeps the UI responsive while the backend
-  // catches up.
+  // catches up. When called with `{ id, deleted: true }` (from the
+  // manage-access popup's Delete action), the row is dropped instead.
   const upsertStudent = (s: any) =>
     setStudents((prev) => {
+      if (s && s.deleted === true) {
+        return prev.filter((x) => x.id !== s.id);
+      }
       const idx = prev.findIndex((x) => x.id === s.id);
       if (idx === -1) return [s, ...prev];
       const copy = [...prev];
@@ -2336,6 +2353,20 @@ function LoginsView({
   const [savingStudent, setSavingStudent] = useState(false);
   const [blockingStudentId, setBlockingStudentId] = useState('');
 
+  // --- Manage-access popup state (Task 32) ---
+  // When the accountant clicks "Block" on a student or teacher, instead of
+  // immediately blocking we open a popup offering two choices:
+  //   • Block  — temporary; the user can't log in but their data is kept.
+  //   • Delete — permanent; the login AND all their data are erased forever.
+  // `manageTarget` holds the user being acted on + which list they came from.
+  // `manageMode` flips between the choice view ('choose') and the delete
+  // confirmation view ('confirm-delete') once Delete is picked.
+  const [manageTarget, setManageTarget] = useState<any | null>(null);
+  const [manageKind, setManageKind] = useState<'student' | 'teacher'>('student');
+  const [manageMode, setManageMode] = useState<'choose' | 'confirm-delete'>('choose');
+  const [manageBusy, setManageBusy] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
   // --- Teacher manage-existing state (Task 15) ---
   // Below the creation form, the Teacher Logins tab lists every existing
   // teacher in the branch so the accountant can edit or block them.
@@ -2649,23 +2680,25 @@ function LoginsView({
     }
   };
 
-  const toggleStudentBlock = async (s: any) => {
-    const blocked = isBlocked(s);
-    if (!blocked) {
-      const ok = window.confirm(
-        `Block ${s.name}? They will be signed out and unable to log in until unblocked.`,
-      );
-      if (!ok) return;
-    }
+  // Opens the manage-access popup for a student. (Task 32)
+  // The popup offers Block (temporary) or Delete (permanent). When the
+  // student is already blocked, the row's button reads "Unblock" and calls
+  // unblockStudent directly — no popup, since unblocking is reversible.
+  const openManageStudent = (s: any) => {
+    setManageTarget(s);
+    setManageKind('student');
+    setManageMode('choose');
+    setDeleteConfirmText('');
+  };
+
+  const unblockStudent = async (s: any) => {
     setBlockingStudentId(s.id);
     try {
-      await api.blockUser(s.id, !blocked);
-      onUpdate({ id: s.id, blocked: blocked ? 0 : 1 });
+      await api.blockUser(s.id, false);
+      onUpdate({ id: s.id, blocked: 0 });
       toast({
-        title: blocked ? 'Student unblocked' : 'Student blocked',
-        description: blocked
-          ? `${s.name} can now sign in again.`
-          : `${s.name} has been signed out.`,
+        title: 'Student unblocked',
+        description: `${s.name} can now sign in again.`,
       });
     } catch (e: any) {
       toast({
@@ -2675,6 +2708,16 @@ function LoginsView({
       });
     } finally {
       setBlockingStudentId('');
+    }
+  };
+
+  // Legacy name kept for the Unblock button — toggling an already-blocked
+  // student off is a direct action (no popup).
+  const toggleStudentBlock = (s: any) => {
+    if (isBlocked(s)) {
+      unblockStudent(s);
+    } else {
+      openManageStudent(s);
     }
   };
 
@@ -2769,25 +2812,26 @@ function LoginsView({
     }
   };
 
-  const toggleTeacherBlock = async (t: any) => {
-    const blocked = isBlocked(t);
-    if (!blocked) {
-      const ok = window.confirm(
-        `Block ${t.name}? They will be signed out and unable to log in until unblocked.`,
-      );
-      if (!ok) return;
-    }
+  // Opens the manage-access popup for a teacher. (Task 32)
+  // Same UX as students: Block (temporary) or Delete (permanent). The
+  // Unblock button still unblocks directly without a popup.
+  const openManageTeacher = (t: any) => {
+    setManageTarget(t);
+    setManageKind('teacher');
+    setManageMode('choose');
+    setDeleteConfirmText('');
+  };
+
+  const unblockTeacher = async (t: any) => {
     setBlockingTeacherId(t.id);
     try {
-      await api.blockUser(t.id, !blocked);
+      await api.blockUser(t.id, false);
       setTeachers((prev) =>
-        prev.map((x) => (x.id === t.id ? { ...x, blocked: blocked ? 0 : 1 } : x)),
+        prev.map((x) => (x.id === t.id ? { ...x, blocked: 0 } : x)),
       );
       toast({
-        title: blocked ? 'Teacher unblocked' : 'Teacher blocked',
-        description: blocked
-          ? `${t.name} can now sign in again.`
-          : `${t.name} has been signed out.`,
+        title: 'Teacher unblocked',
+        description: `${t.name} can now sign in again.`,
       });
     } catch (e: any) {
       toast({
@@ -2797,6 +2841,89 @@ function LoginsView({
       });
     } finally {
       setBlockingTeacherId('');
+    }
+  };
+
+  const toggleTeacherBlock = (t: any) => {
+    if (isBlocked(t)) {
+      unblockTeacher(t);
+    } else {
+      openManageTeacher(t);
+    }
+  };
+
+  // ─── Manage-access popup actions (Task 32) ───
+  // Shared by both students and teachers. `manageTarget` carries the user
+  // object; `manageKind` says which list to update after the action.
+
+  const closeManagePopup = () => {
+    if (manageBusy) return;
+    setManageTarget(null);
+    setManageMode('choose');
+    setDeleteConfirmText('');
+  };
+
+  const confirmBlockFromPopup = async () => {
+    if (!manageTarget) return;
+    setManageBusy(true);
+    try {
+      await api.blockUser(manageTarget.id, true);
+      if (manageKind === 'student') {
+        onUpdate({ id: manageTarget.id, blocked: 1 });
+      } else {
+        setTeachers((prev) =>
+          prev.map((x) => (x.id === manageTarget.id ? { ...x, blocked: 1 } : x)),
+        );
+      }
+      toast({
+        title: `${manageKind === 'student' ? 'Student' : 'Teacher'} blocked`,
+        description: `${manageTarget.name} has been signed out and can no longer log in. Their data is preserved — unblock anytime.`,
+      });
+      closeManagePopup();
+    } catch (e: any) {
+      toast({
+        title: 'Could not block user',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setManageBusy(false);
+    }
+  };
+
+  const confirmDeleteFromPopup = async () => {
+    if (!manageTarget) return;
+    // Safety gate: the typed confirmation must match the user's name.
+    if (deleteConfirmText.trim().toLowerCase() !== (manageTarget.name || '').trim().toLowerCase()) {
+      toast({
+        title: 'Name does not match',
+        description: 'Type the name exactly as shown to confirm permanent deletion.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setManageBusy(true);
+    try {
+      await api.deleteUser(manageTarget.id);
+      if (manageKind === 'student') {
+        // Tell the parent component this student row should be dropped.
+        onUpdate({ id: manageTarget.id, deleted: true });
+      } else {
+        setTeachers((prev) => prev.filter((x) => x.id !== manageTarget.id));
+      }
+      toast({
+        title: `${manageKind === 'student' ? 'Student' : 'Teacher'} deleted`,
+        description: `${manageTarget.name}'s login and all associated data have been permanently removed.`,
+      });
+      closeManagePopup();
+    } catch (e: any) {
+      toast({
+        title: 'Could not delete user',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setManageBusy(false);
     }
   };
 
@@ -3581,6 +3708,180 @@ function LoginsView({
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* ===== Manage-access popup (Task 32) =====
+          Opens when the accountant clicks "Block" on a student or teacher
+          whose login is currently active. Offers two choices:
+            • Block           — temporary; data kept, can be unblocked.
+            • Delete forever  — permanent; login + all data erased.
+          Delete requires typing the user's name to confirm. */}
+      <AlertDialog open={!!manageTarget} onOpenChange={(o) => !o && closeManagePopup()}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-gray-900">
+              <ShieldBan className="h-5 w-5 text-[#F26522]" />
+              Manage {manageKind === 'student' ? 'Student' : 'Teacher'} Access
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-gray-600">
+                Choose what to do with{' '}
+                <span className="font-semibold text-gray-900">
+                  {manageTarget?.name || 'this user'}
+                </span>
+                's login.
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {/* User summary card */}
+          {manageTarget && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wider text-gray-400">
+                  {manageKind === 'student' ? 'Student' : 'Teacher'}
+                </span>
+                <span className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Login active
+                </span>
+              </div>
+              <div className="text-sm font-semibold text-gray-900">{manageTarget.name}</div>
+              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                <span>ID: {manageTarget.rollNo || '—'}</span>
+                {manageTarget.class ? (
+                  <span>Class: {manageTarget.class}{manageTarget.section ? `-${manageTarget.section}` : ''}</span>
+                ) : null}
+                {manageTarget.email ? <span className="truncate">{manageTarget.email}</span> : null}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Choice view ─── */}
+          {manageMode === 'choose' && (
+            <div className="space-y-3">
+              {/* Block option */}
+              <button
+                type="button"
+                onClick={confirmBlockFromPopup}
+                disabled={manageBusy}
+                className="w-full text-left rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/70 hover:border-amber-300 transition-colors p-4 group disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 group-hover:bg-amber-200 transition-colors">
+                    {manageBusy ? (
+                      <Loader2 className="h-4 w-4 text-amber-700 animate-spin" />
+                    ) : (
+                      <Ban className="h-4 w-4 text-amber-700" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-amber-900">Block login</div>
+                    <p className="text-[12px] text-amber-800/90 mt-0.5 leading-relaxed">
+                      They'll be signed out and can't log in until you unblock them.
+                      <span className="font-medium"> Their data is preserved</span> —
+                      attendance, results, fees, everything stays. Reversible anytime.
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Delete option */}
+              <button
+                type="button"
+                onClick={() => setManageMode('confirm-delete')}
+                disabled={manageBusy}
+                className="w-full text-left rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/70 hover:border-rose-300 transition-colors p-4 group disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-rose-100 flex items-center justify-center shrink-0 group-hover:bg-rose-200 transition-colors">
+                    <Trash2 className="h-4 w-4 text-rose-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-rose-900">Delete permanently</div>
+                    <p className="text-[12px] text-rose-800/90 mt-0.5 leading-relaxed">
+                      Permanently deletes the login{' '}
+                      <span className="font-medium">and all their data</span> —
+                      {manageKind === 'student'
+                        ? ' fee invoices, misc charges, attendance & results entries are erased.'
+                        : ' class assignments, course materials, diary, salary records are erased.'}
+                      <span className="font-semibold"> This cannot be undone.</span>
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* ─── Delete confirmation view ─── */}
+          {manageMode === 'confirm-delete' && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 flex gap-2.5">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="text-[12px] text-rose-800 leading-relaxed">
+                  You are about to <span className="font-semibold">permanently delete</span>{' '}
+                  <span className="font-semibold">{manageTarget?.name}</span> and{' '}
+                  {manageKind === 'student'
+                    ? 'all their fee, attendance, and result records'
+                    : 'all their class assignments, materials, and salary records'}
+                  . This action <span className="font-semibold">cannot be undone</span>.
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+                  Type the name{' '}
+                  <span className="text-rose-600 font-bold">{manageTarget?.name}</span> to confirm
+                </Label>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="border-rose-200 focus-visible:ring-rose-300"
+                  placeholder={manageTarget?.name || ''}
+                  autoFocus
+                  disabled={manageBusy}
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setManageMode('choose')}
+                  disabled={manageBusy}
+                  className="flex-1 h-9 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteFromPopup}
+                  disabled={
+                    manageBusy ||
+                    deleteConfirmText.trim().toLowerCase() !==
+                      (manageTarget?.name || '').trim().toLowerCase()
+                  }
+                  className="flex-1 h-9 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {manageBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete forever
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer (only on choice view) */}
+          {manageMode === 'choose' && (
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                disabled={manageBusy}
+                className="mt-0"
+              >
+                Cancel
+              </AlertDialogCancel>
+            </AlertDialogFooter>
+          )}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

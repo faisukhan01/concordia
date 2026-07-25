@@ -153,6 +153,8 @@ export const api = {
   editUser: async (id: string, body: any) => { const r = await request<any>(`platform/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); invalidateCache(); return r; },
   blockUser: async (id: string, blocked: boolean, reason?: string) =>
     { const r = await request<any>(`platform/users/${id}/block`, { method: 'PATCH', body: JSON.stringify({ blocked, reason }) }); invalidateCache(); return r; },
+  deleteUser: async (id: string) =>
+    { const r = await request<any>(`platform/users/${id}`, { method: 'DELETE' }); invalidateCache(); return r; },
   getUserPassword: (id: string) => request<any>(`platform/users/${id}/password`),
   scopedStats: (instituteId?: string, branchId?: string) => {
     const q = new URLSearchParams();

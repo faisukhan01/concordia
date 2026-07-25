@@ -451,6 +451,81 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       return NextResponse.json({ success: true, blocked });
     }
 
+    // ===================== DELETE PLATFORM USER (permanent) =====================
+    // Permanently deletes a student or teacher account AND cascades cleanup of
+    // every table that references them (sessions, fees, misc charges, teacher
+    // assignments, course materials, diary, salaries, attendance, results).
+    // The user's row is then removed — this is irreversible.
+    if (method === 'DELETE' && pathSegments[0] === 'platform' && pathSegments[1] === 'users' && pathSegments.length === 3) {
+      const user = await requireAuth(req);
+      const id = pathSegments[2];
+      const r = await db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] });
+      if (r.rows.length === 0) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      const target = r.rows[0] as any;
+      // Only student/teacher accounts can be deleted through this endpoint —
+      // staff accounts (admin, accountant, academic, admissions, super-admin)
+      // are managed elsewhere and must never be removed from here.
+      if (target.role !== 'student' && target.role !== 'teacher') {
+        return NextResponse.json({ error: 'Only student or teacher accounts can be deleted from here' }, { status: 403 });
+      }
+      // Scope guards — a user can only be deleted by someone with authority
+      // over their branch / institute.
+      if (user.role === 'branch-manager' && target.branchId !== user.branchId) return NextResponse.json({ error: 'Can only delete users in your branch' }, { status: 403 });
+      if (user.role === 'institute-admin' && target.instituteId !== user.instituteId) return NextResponse.json({ error: 'Can only delete users in your institute' }, { status: 403 });
+      if (['accountant', 'admissions', 'academic', 'admin'].includes(user.role)) {
+        if (user.branchId && target.branchId && target.branchId !== user.branchId) {
+          return NextResponse.json({ error: 'Can only delete users in your branch' }, { status: 403 });
+        }
+      }
+      // 1) Kill every active session for this user (signs them out everywhere).
+      await db.execute({ sql: 'DELETE FROM sessions WHERE userId = ?', args: [target.id] });
+      // 2) Teacher-owned data: assignments, materials, diary, salaries,
+      //    and the attendance/results rows they authored.
+      if (target.role === 'teacher') {
+        await db.execute({ sql: 'DELETE FROM teacher_class_courses WHERE teacherId = ?', args: [target.id] });
+        await db.execute({ sql: 'DELETE FROM course_materials WHERE teacherId = ?', args: [target.id] });
+        try { await db.execute({ sql: 'DELETE FROM diary WHERE teacherId = ?', args: [target.id] }); } catch {}
+        try { await db.execute({ sql: 'DELETE FROM salary_payments WHERE teacherId = ?', args: [target.id] }); } catch {}
+        try { await db.execute({ sql: 'DELETE FROM teacher_salaries WHERE teacherId = ?', args: [target.id] }); } catch {}
+        await db.execute({ sql: 'DELETE FROM attendance WHERE teacherId = ?', args: [target.id] });
+        await db.execute({ sql: 'DELETE FROM results WHERE teacherId = ?', args: [target.id] });
+      }
+      // 3) Student-owned data: fee invoices, misc charges. Also strip the
+      //    student out of any attendance/results JSON `records` arrays so
+      //    no dangling references remain inside class-wide rows.
+      if (target.role === 'student') {
+        try { await db.execute({ sql: 'DELETE FROM fee_invoices WHERE studentId = ?', args: [target.id] }); } catch {}
+        try { await db.execute({ sql: 'DELETE FROM misc_charges WHERE studentId = ?', args: [target.id] }); } catch {}
+        try {
+          const attR = await db.execute({ sql: 'SELECT id, records FROM attendance WHERE records LIKE ?', args: [`%${target.id}%`] });
+          for (const row of attR.rows as any[]) {
+            try {
+              const recs = JSON.parse(row.records || '[]');
+              const filtered = Array.isArray(recs) ? recs.filter((e: any) => e && e.studentId !== target.id) : recs;
+              if (JSON.stringify(filtered) !== row.records) {
+                await db.execute({ sql: 'UPDATE attendance SET records = ? WHERE id = ?', args: [JSON.stringify(filtered), row.id] });
+              }
+            } catch {}
+          }
+        } catch {}
+        try {
+          const resR = await db.execute({ sql: 'SELECT id, records FROM results WHERE records LIKE ?', args: [`%${target.id}%`] });
+          for (const row of resR.rows as any[]) {
+            try {
+              const recs = JSON.parse(row.records || '[]');
+              const filtered = Array.isArray(recs) ? recs.filter((e: any) => e && e.studentId !== target.id) : recs;
+              if (JSON.stringify(filtered) !== row.records) {
+                await db.execute({ sql: 'UPDATE results SET records = ? WHERE id = ?', args: [JSON.stringify(filtered), row.id] });
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+      // 4) Finally, remove the user row itself.
+      await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [target.id] });
+      return NextResponse.json({ success: true, deleted: target.id });
+    }
+
     if (method === 'GET' && pathSegments[0] === 'platform' && pathSegments[1] === 'users' && pathSegments[3] === 'password') {
       const user = await requireAuth(req);
       const id = pathSegments[2];
