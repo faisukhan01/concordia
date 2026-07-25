@@ -408,6 +408,30 @@ const KB: KBEntry[] = [
       "Your username is your Roll Number (e.g. STU-2026-001). Your password is set by the Accountant when they create your login. If you don't know your password, ask the Accountant to reset it from Create Logins → Student Logins. You can change your password anytime from Settings after logging in.",
     category: 'student',
   },
+  {
+    id: 'stu-attendance',
+    keywords: ['my attendance', 'student attendance', 'view attendance', 'attendance history', 'check attendance', 'present absent student', 'attendance percentage'],
+    question: 'How do I check my attendance?',
+    answer:
+      "Go to 'My Attendance' in the sidebar. You'll see your attendance history with the percentage of days present. Your teachers mark attendance daily from their Teacher portal — once saved, it shows up here. Parents can see the same attendance summary on their dashboard.",
+    category: 'student',
+  },
+  {
+    id: 'stu-timetable',
+    keywords: ['my timetable', 'student timetable', 'class timetable', 'my schedule', 'view timetable student', 'my routine', 'class schedule'],
+    question: 'How do I see my class timetable?',
+    answer:
+      "Your class timetable is set by the Academic Office. Once they create it for your class (Timetable page, with day/period/subject/teacher/room), you can view it from your Student portal. If it's not showing yet, the Academic Office may not have published it — check back soon or ask your teacher.",
+    category: 'student',
+  },
+  {
+    id: 'stu-materials',
+    keywords: ['download notes', 'study material student', 'course material student', 'view notes', 'my materials', 'class notes'],
+    question: 'How do I download my study materials?',
+    answer:
+      "Go to 'Course Materials' in the sidebar. You'll see materials your teachers have uploaded for your class — click any item to download the file or open the link (e.g. a YouTube or Google Drive link). If nothing shows, your teachers haven't uploaded anything yet.",
+    category: 'student',
+  },
 
   // ─── PARENT PORTAL ───────────────────────────────────────────────────────
   {
@@ -426,6 +450,29 @@ const KB: KBEntry[] = [
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Collapse repeated characters so "hiiii"→"hi", "hellooo"→"hello", "thanksss"→"thans".
+// Used for tolerant greeting / thanks detection — the bot should never miss a
+// greeting just because the user held a key down.
+function collapse(s: string): string {
+  return s.replace(/(.)\1+/g, '$1');
+}
+
+// Bulletproof greeting detection — catches "hi", "hiiii", "hello", "hellooo",
+// "hey", "heyyy", "yo", "salam", "assalam", "aoa", "hola", and leading-word
+// greetings like "hi there" / "hello bot" / "hey, can you help".
+function looksLikeGreeting(norm: string): boolean {
+  const first = norm.split(' ')[0];
+  if (/^(hi+|he+l+o+|he+y+|yo|hi+ya+|sala+m+|asa+l+a+m+|aoa|hola|hey+)$/i.test(first)) return true;
+  if (/\b(hi|hello|hey|salam|assalam|aoa|hola)\b/i.test(norm)) return true;
+  return false;
+}
+
+// Tolerant thanks detection — "thanks", "thanksss", "thank you", "thx", "ty".
+function looksLikeThanks(norm: string): boolean {
+  const c = collapse(norm);
+  return /\b(thanks|thank|thx|ty|thnks|tanks)\b/i.test(c) || /thank you/i.test(c);
 }
 
 // Stopwords stripped from BOTH the message and multi-word keywords so that
@@ -591,6 +638,25 @@ function matchSmallTalk(userMessage: string): string | null {
   if (!norm) return null;
   const words = new Set(norm.split(' '));
 
+  // ── Bulletproof greeting / thanks pre-checks (tolerate "hiiii", "thanksss") ──
+  // These run before the trigger loop so a held-down key never produces a
+  // fallback. A greeting alone → stop here; a greeting + real question → the
+  // caller still scans the KB and appends the answer.
+  if (looksLikeGreeting(norm)) {
+    const st = SMALL_TALK.find(s => s.id === 'greet')!;
+    const i = smallTalkRotation[st.id] || 0;
+    const reply = st.replies[i % st.replies.length];
+    smallTalkRotation[st.id] = (i + 1) % st.replies.length;
+    return reply;
+  }
+  if (looksLikeThanks(norm)) {
+    const st = SMALL_TALK.find(s => s.id === 'thanks')!;
+    const i = smallTalkRotation[st.id] || 0;
+    const reply = st.replies[i % st.replies.length];
+    smallTalkRotation[st.id] = (i + 1) % st.replies.length;
+    return reply;
+  }
+
   for (const st of SMALL_TALK) {
     let hit = false;
     for (const trig of st.triggers) {
@@ -632,12 +698,12 @@ type Msg = { role: 'bot' | 'user'; text: string; ts: number };
 const WELCOME: Msg = {
   role: 'bot',
   text:
-    "Hi! I'm the Concordia Assistant 👋\n\nI can guide you through any portal — Admin, Admissions, Accountant, Academic, Teacher, Student, or Parent. Ask me how to do something, or tap a suggestion below.",
+    "Hi! 👋 I'm the Concordia Assistant — your in-portal guide.\n\nI can walk you through anything across the Admin, Admissions, Accountant, Academic, Teacher, Student, and Parent portals. Just type your question in your own words, or tap a suggestion below to get started.",
   ts: Date.now(),
 };
 
 const FALLBACK =
-  "Hmm, I'm not sure about that one — but I can help with almost anything in the portal. Try asking me how to:\n\n• enroll a new student\n• create an exam or monthly test\n• view result cards\n• set fee installments\n• create a teacher login\n• enter marks (as a teacher)\n• view your fees or results\n• fix a timetable clash\n\nOr just tell me what you're trying to do in your own words.";
+  "I'm not quite sure I caught that — but I can definitely help you get around! 🙌\n\nTry asking me things like:\n\n• \"How do I enroll a student?\"\n• \"How do I create an exam?\"\n• \"How do I view result cards?\"\n• \"How do I set fee installments?\"\n• \"How do I create a teacher login?\"\n• \"How do I enter marks as a teacher?\"\n• \"How do I view my fees?\"\n• \"Why am I getting a clash error?\"\n\nOr just tell me what you're trying to do — I'll point you to the right page. You can also tap any of the quick suggestions below.";
 
 // ─────────────────────────── Component ─────────────────────────────────────
 export function HelpWidget() {
@@ -821,27 +887,32 @@ export function HelpWidget() {
                   </div>
                 )}
 
-                {/* Suggestion chips — only show when there are ≤ 2 messages (welcome + maybe 1) */}
-                {messages.length <= 2 && !typing && (
-                  <div className="pt-1">
-                    <div className="flex items-center gap-1.5 mb-2 px-1">
-                      <Sparkles className="h-3 w-3 text-[#F26522]" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Try asking</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {SUGGESTIONS.map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => handleSuggestion(q)}
-                          className="px-2.5 py-1.5 rounded-full border border-gray-200 bg-white text-xs text-gray-600 hover:border-[#F26522]/40 hover:text-[#F26522] transition-colors"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* Messages only — suggestion chips moved to a pinned strip
+                    above the input so they're always reachable (like a real
+                    chatbot's quick-replies). */}
               </div>
+
+              {/* Pinned quick-replies — always visible above the input so users
+                  can tap a common question at any point in the conversation. */}
+              {!typing && (
+                <div className="border-t border-gray-100 bg-gray-50/80 px-3 pt-2.5 pb-1">
+                  <div className="flex items-center gap-1.5 mb-1.5 px-0.5">
+                    <Sparkles className="h-3 w-3 text-[#F26522]" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Quick questions</span>
+                  </div>
+                  <div className="flex gap-1.5 overflow-x-auto pb-2 scroll-fancy" style={{ scrollbarWidth: 'thin' }}>
+                    {SUGGESTIONS.map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => handleSuggestion(q)}
+                        className="shrink-0 px-2.5 py-1.5 rounded-full border border-gray-200 bg-white text-xs text-gray-600 hover:border-[#F26522]/40 hover:text-[#F26522] transition-colors"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Input */}
               <div className="border-t border-gray-100 p-3 bg-white">

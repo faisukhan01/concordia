@@ -907,8 +907,20 @@ function TimetableView({ user }: { user: any }) {
 // ───────────────────────── Date Sheets ─────────────────────────
 function DateSheetView({ user }: { user: any }) {
   const setActiveModule = useApp(s => s.setActiveModule);
+  const currentModule = useApp(s => s.activeModule);
   const pendingExamName = useApp(s => s.pendingExamName);
   const clearPendingExamName = useApp(s => s.setPendingExamName);
+
+  // Namespace-aware navigation: when an admin is browsing the Academic
+  // sub-portal, the active module is namespaced (e.g. "academic:academic-datesheet").
+  // If we naively setActiveModule('academic-tests') the role-portal guard sees
+  // that id isn't in the admin's module list and bounces back to the first
+  // module (dashboard) — so the "Go to Exams" button appears to do nothing.
+  // This helper preserves the current namespace so navigation actually lands.
+  const goTo = (target: string) => {
+    const ns = currentModule && currentModule.includes(':') ? currentModule.split(':')[0] : null;
+    setActiveModule(ns ? `${ns}:${target}` : target);
+  };
 
   const [items, setItems] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
@@ -1006,8 +1018,8 @@ function DateSheetView({ user }: { user: any }) {
               You can't build a date sheet until at least one exam exists. Head over to the Exams page, create your monthly test, midterm, or final, then come back here — the exam name will be pre-filled for you.
             </p>
           </div>
-          <button onClick={() => setActiveModule('academic-tests')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium h-9 px-4 shrink-0">
-            <FileText className="h-4 w-4" /> Go to Exams
+          <button onClick={() => goTo('academic-tests')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium h-9 px-4 shrink-0">
+            <FileText className="h-4 w-4" /> Create Exam
           </button>
         </div>
       )}
@@ -1087,7 +1099,14 @@ function DateSheetView({ user }: { user: any }) {
 //     office is told to create one here first.
 function ExamsView({ user }: { user: any }) {
   const setActiveModule = useApp(s => s.setActiveModule);
+  const currentModule = useApp(s => s.activeModule);
   const setPendingExamName = useApp(s => s.setPendingExamName);
+  // Namespace-aware navigation (see DateSheetView for the full rationale —
+  // admin sub-portal module ids are prefixed with "academic:").
+  const goTo = (target: string) => {
+    const ns = currentModule && currentModule.includes(':') ? currentModule.split(':')[0] : null;
+    setActiveModule(ns ? `${ns}:${target}` : target);
+  };
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1150,7 +1169,7 @@ function ExamsView({ user }: { user: any }) {
 
   const openDateSheetFor = (examName: string) => {
     setPendingExamName(examName);
-    setActiveModule('academic-datesheet');
+    goTo('academic-datesheet');
   };
 
   return (
