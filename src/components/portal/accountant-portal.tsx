@@ -2407,6 +2407,21 @@ function LoginsView({
       const password = genDefaultPassword();
       const rollNo = s.rollNo || s.email?.split('@')[0] || s.id;
       const email = `${String(rollNo).toLowerCase()}@concordia.edu.pk`;
+      // Pre-check: the auto-generated email must not already belong to
+      // another user (e.g. a teacher was given the same handle). The
+      // server enforces this too, but we surface it here with a clearer
+      // message.
+      const emailClash = students.find(
+        (x) => x.id !== s.id && (x.email || '').toLowerCase() === email.toLowerCase(),
+      );
+      if (emailClash) {
+        toast({
+          title: 'Email clash',
+          description: `The generated email "${email}" is already used by ${emailClash.name}. Change the student's roll number first.`,
+          variant: 'destructive',
+        });
+        return;
+      }
       try {
         // PATCH the existing student row with real credentials.
         await api.editUser(s.id, { email, password });
@@ -2471,10 +2486,28 @@ function LoginsView({
       toast({ title: 'Name and Teacher ID are required', variant: 'destructive' });
       return;
     }
+    // Client-side duplicate Teacher ID check (the server also enforces this,
+    // but checking here gives the accountant instant feedback without a
+    // round-trip). The `teachers` list is already loaded for the table below.
+    const rollNoTrim = form.rollNo.trim();
+    const dupTeacher = teachers.find(
+      (t) => (t.rollNo || '').toLowerCase() === rollNoTrim.toLowerCase(),
+    );
+    if (dupTeacher) {
+      toast({
+        title: 'Duplicate Teacher ID',
+        description: `Teacher ID "${rollNoTrim}" is already used by ${dupTeacher.name}. Please use a different ID.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Also check the auto-generated email won't collide (rare, but possible
+    // if a student was admitted with the same ID).
+    const plannedEmail = form.email || `${rollNoTrim.toLowerCase()}@concordia.edu.pk`;
     setSaving(true);
     try {
       const password = form.password || 'teacher' + Math.floor(1000 + Math.random() * 9000);
-      const email = form.email || `${form.rollNo.toLowerCase()}@concordia.edu.pk`;
+      const email = plannedEmail;
       // Only the login is created here. Subjects / classes are assigned
       // later by the Academic Office.
       await api.createPlatformUser({
@@ -2564,6 +2597,23 @@ function LoginsView({
     if (!editStudent) return;
     if (!studentForm.name || !studentForm.rollNo) {
       toast({ title: 'Name and Roll No are required', variant: 'destructive' });
+      return;
+    }
+    // Client-side duplicate Roll Number check — excludes the student being
+    // edited. The server (PATCH platform/users) also enforces this, but
+    // checking here gives instant feedback.
+    const rollNoTrim = studentForm.rollNo.trim();
+    const dupStudent = students.find(
+      (s) =>
+        s.id !== editStudent.id &&
+        (s.rollNo || '').toLowerCase() === rollNoTrim.toLowerCase(),
+    );
+    if (dupStudent) {
+      toast({
+        title: 'Duplicate Roll Number',
+        description: `Roll Number "${rollNoTrim}" is already used by ${dupStudent.name}. Please use a different roll number.`,
+        variant: 'destructive',
+      });
       return;
     }
     setSavingStudent(true);
@@ -2668,6 +2718,22 @@ function LoginsView({
     if (!editingTeacher) return;
     if (!teacherEditForm.name || !teacherEditForm.rollNo) {
       toast({ title: 'Name and Teacher ID are required', variant: 'destructive' });
+      return;
+    }
+    // Client-side duplicate Teacher ID check — excludes the teacher being
+    // edited (so they can save their own existing ID).
+    const rollNoTrim = teacherEditForm.rollNo.trim();
+    const dupTeacher = teachers.find(
+      (t) =>
+        t.id !== editingTeacher.id &&
+        (t.rollNo || '').toLowerCase() === rollNoTrim.toLowerCase(),
+    );
+    if (dupTeacher) {
+      toast({
+        title: 'Duplicate Teacher ID',
+        description: `Teacher ID "${rollNoTrim}" is already used by ${dupTeacher.name}. Please use a different ID.`,
+        variant: 'destructive',
+      });
       return;
     }
     setSavingTeacher(true);

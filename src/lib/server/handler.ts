@@ -376,6 +376,35 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       if (user.role === 'branch-manager' && target.branchId !== user.branchId) return NextResponse.json({ error: 'Can only edit users in your branch' }, { status: 403 });
       if (user.role === 'institute-admin' && target.instituteId !== user.instituteId) return NextResponse.json({ error: 'Can only edit users in your institute' }, { status: 403 });
 
+      // Duplicate-clash checks (exclude the user being edited). Prevents the
+      // accountant / academic office from accidentally re-assigning an
+      // existing Roll Number / Teacher ID or email to a different person.
+      if (email) {
+        const emailClash = await db.execute({
+          sql: 'SELECT id, name FROM users WHERE LOWER(email) = ? AND id != ?',
+          args: [email.toLowerCase(), target.id],
+        });
+        if (emailClash.rows.length > 0) {
+          const c = emailClash.rows[0] as any;
+          return NextResponse.json({
+            error: `Email "${email}" is already used by ${c.name || 'another user'}. Use a different email.`,
+          }, { status: 409 });
+        }
+      }
+      if (rollNo) {
+        const rollClash = await db.execute({
+          sql: 'SELECT id, name, role FROM users WHERE rollNo = ? AND branchId = ? AND id != ?',
+          args: [rollNo, target.branchId, target.id],
+        });
+        if (rollClash.rows.length > 0) {
+          const c = rollClash.rows[0] as any;
+          const label = target.role === 'teacher' ? 'Teacher ID' : 'Roll Number';
+          return NextResponse.json({
+            error: `${label} "${rollNo}" is already used by ${c.name || 'another ' + (c.role || 'user')} in this branch. Use a different ${label}.`,
+          }, { status: 409 });
+        }
+      }
+
       if (name) await db.execute({ sql: 'UPDATE users SET name = ? WHERE id = ?', args: [name, target.id] });
       if (email) await db.execute({ sql: 'UPDATE users SET email = ? WHERE id = ?', args: [email, target.id] });
       if (password) await db.execute({ sql: 'UPDATE users SET password = ?, mustChangePassword = 1 WHERE id = ?', args: [password, target.id] });
@@ -574,6 +603,19 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       const { name, code, branchId } = body || {};
       if (!name) return NextResponse.json({ error: 'Course name required' }, { status: 400 });
       const brId = branchId || user.branchId;
+      // Prevent duplicate course names or codes within the same branch.
+      const dupName = await db.execute({
+        sql: 'SELECT id FROM courses WHERE branchId = ? AND LOWER(name) = ?',
+        args: [brId, name.trim().toLowerCase()],
+      });
+      if (dupName.rows.length > 0) return NextResponse.json({ error: `A course named "${name.trim()}" already exists in this branch` }, { status: 409 });
+      if (code && code.trim()) {
+        const dupCode = await db.execute({
+          sql: 'SELECT id FROM courses WHERE branchId = ? AND LOWER(code) = ?',
+          args: [brId, code.trim().toLowerCase()],
+        });
+        if (dupCode.rows.length > 0) return NextResponse.json({ error: `Course code "${code.trim()}" is already used by another course in this branch` }, { status: 409 });
+      }
       const id = nextId('CRS');
       await db.execute({ sql: 'INSERT INTO courses (id, branchId, name, code) VALUES (?, ?, ?, ?)', args: [id, brId, name, code || ''] });
       return NextResponse.json({ id, name, code }, { status: 201 });
@@ -2171,25 +2213,73 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       requireRole(user, 'branch-manager', 'institute-admin');
       const { classId, className, section, day, period, startTime, endTime, subject, teacherId, teacherName, roomName } = body || {};
       if (!day || period === undefined) return NextResponse.json({ error: 'day and period required' }, { status: 400 });
-      const id = nextId('TT');
       const brId = user.branchId;
-      const existing = await db.execute({
-        sql: 'SELECT id FROM timetable WHERE branchId = ? AND classId = ? AND day = ? AND period = ?',
-        args: [brId, classId || null, day, period],
-      });
-      if (existing.rows.length > 0) {
-        await db.execute({
-          sql: 'UPDATE timetable SET classId = ?, className = ?, section = ?, startTime = ?, endTime = ?, subject = ?, teacherId = ?, teacherName = ?, roomName = ? WHERE id = ?',
-          args: [classId || null, className || '', section || 'A', startTime || '', endTime || '', subject || '', teacherId || null, teacherName || '', roomName || '', (existing.rows[0] as any).id],
+
+      // ─── Clash check #1: CLASS slot already taken ───
+      // The same class cannot have two lectures on the same day + period.
+      // Previously this silently overwrote the existing row — that hid
+      // mistakes. Now we error so the academic office sees the clash.
+      if (classId) {
+        const classClash = await db.execute({
+          sql: 'SELECT id, subject, teacherName FROM timetable WHERE branchId = ? AND classId = ? AND day = ? AND period = ?',
+          args: [brId, classId, day, period],
         });
-        return NextResponse.json({ success: true, id: (existing.rows[0] as any).id, updated: true });
-      } else {
-        await db.execute({
-          sql: 'INSERT INTO timetable (id, branchId, classId, className, section, day, period, startTime, endTime, subject, teacherId, teacherName, roomName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          args: [id, brId, classId || null, className || '', section || 'A', day, period, startTime || '', endTime || '', subject || '', teacherId || null, teacherName || '', roomName || ''],
-        });
-        return NextResponse.json({ success: true, id }, { status: 201 });
+        if (classClash.rows.length > 0) {
+          const c = classClash.rows[0] as any;
+          const clsLabel = className ? `${className}${section ? '-' + section : ''}` : 'This class';
+          const detail = c.subject ? ` (${c.subject}${c.teacherName ? ' · ' + c.teacherName : ''})` : '';
+          return NextResponse.json({
+            error: `${clsLabel} already has a lecture scheduled for ${day} Period ${period}${detail}. Delete that entry first if you want to change it.`,
+          }, { status: 409 });
+        }
       }
+
+      // ─── Clash check #2: TEACHER already booked elsewhere ───
+      // The same teacher cannot be in two places at once — if they already
+      // have a lecture on this day + period (in any class), block it.
+      if (teacherId) {
+        const teacherClash = await db.execute({
+          sql: 'SELECT id, className, section, subject FROM timetable WHERE branchId = ? AND teacherId = ? AND day = ? AND period = ?',
+          args: [brId, teacherId, day, period],
+        });
+        if (teacherClash.rows.length > 0) {
+          const t = teacherClash.rows[0] as any;
+          const clashCls = t.className ? `${t.className}${t.section ? '-' + t.section : ''}` : 'another class';
+          const clashSub = t.subject ? ` (${t.subject})` : '';
+          return NextResponse.json({
+            error: `${teacherName || 'This teacher'} already has a lecture on ${day} Period ${period} in ${clashCls}${clashSub}. Pick a different teacher, day, or period.`,
+          }, { status: 409 });
+        }
+      }
+
+      // ─── Clash check #3: TEACHER time overlap (same day, overlapping
+      // start/end times in a different period) ───
+      // Periods are discrete, but if the academic office set custom
+      // start/end times that overlap with another of the teacher's
+      // lectures on the same day, block that too.
+      if (teacherId && startTime && endTime) {
+        const overlap = await db.execute({
+          sql: `SELECT id, className, section, subject, period, startTime, endTime FROM timetable
+                WHERE branchId = ? AND teacherId = ? AND day = ? AND id IS NOT NULL
+                AND startTime != '' AND endTime != ''
+                AND startTime < ? AND endTime > ?`,
+          args: [brId, teacherId, day, endTime, startTime],
+        });
+        if (overlap.rows.length > 0) {
+          const t = overlap.rows[0] as any;
+          const clashCls = t.className ? `${t.className}${t.section ? '-' + t.section : ''}` : 'another class';
+          return NextResponse.json({
+            error: `${teacherName || 'This teacher'} already has a lecture on ${day} ${t.startTime}–${t.endTime} in ${clashCls} that overlaps with ${startTime}–${endTime}.`,
+          }, { status: 409 });
+        }
+      }
+
+      const id = nextId('TT');
+      await db.execute({
+        sql: 'INSERT INTO timetable (id, branchId, classId, className, section, day, period, startTime, endTime, subject, teacherId, teacherName, roomName) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [id, brId, classId || null, className || '', section || 'A', day, period, startTime || '', endTime || '', subject || '', teacherId || null, teacherName || '', roomName || ''],
+      });
+      return NextResponse.json({ success: true, id }, { status: 201 });
     }
 
     if (method === 'DELETE' && pathSegments[0] === 'timetable' && pathSegments.length === 2) {

@@ -650,6 +650,69 @@ function TimetableView({ user }: { user: any }) {
       return;
     }
     const teacher = teachers.find(t => t.id === fTeacherId) || null;
+
+    // ─── Client-side clash check #1: CLASS slot already taken ───
+    // The currently-loaded `entries` are all for the selected class, so we
+    // can detect a class clash instantly without a server round-trip.
+    const classClash = entries.find(
+      (e) => e.day === fDay && Number(e.period) === period,
+    );
+    if (classClash) {
+      toast({
+        title: 'Class timetable clash',
+        description: `${selClassObj?.name || 'This class'} already has ${classClash.subject || 'a lecture'} on ${fDay} Period ${period}${classClash.teacherName ? ` (${classClash.teacherName})` : ''}. Delete that entry first to change it.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // ─── Client-side clash check #2: TEACHER already booked elsewhere ───
+    // The teacher's lectures in OTHER classes aren't in `entries`, so we
+    // fetch their full timetable on the fly. The server enforces this too,
+    // but surfacing it here gives the academic office immediate, specific
+    // feedback before they hit "Save".
+    if (teacher) {
+      try {
+        const teacherEntries = await api.getTimetable({ teacherId: teacher.id });
+        const teacherClash = (Array.isArray(teacherEntries) ? teacherEntries : []).find(
+          (e: any) => e.day === fDay && Number(e.period) === period,
+        );
+        if (teacherClash) {
+          const clashCls = teacherClash.className
+            ? `${teacherClash.className}${teacherClash.section ? '-' + teacherClash.section : ''}`
+            : 'another class';
+          toast({
+            title: 'Teacher timetable clash',
+            description: `${teacher.name} already has ${teacherClash.subject || 'a lecture'} on ${fDay} Period ${period} in ${clashCls}. Pick a different teacher, day, or period.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        // Also check start/end time overlap on the same day.
+        if (fStart && fEnd) {
+          const timeClash = (Array.isArray(teacherEntries) ? teacherEntries : []).find((e: any) =>
+            e.day === fDay &&
+            e.startTime && e.endTime &&
+            e.startTime < fEnd && e.endTime > fStart,
+          );
+          if (timeClash) {
+            const clashCls = timeClash.className
+              ? `${timeClash.className}${timeClash.section ? '-' + timeClash.section : ''}`
+              : 'another class';
+            toast({
+              title: 'Teacher time overlap',
+              description: `${teacher.name} already has a lecture on ${fDay} ${timeClash.startTime}–${timeClash.endTime} in ${clashCls} that overlaps ${fStart}–${fEnd}.`,
+              variant: 'destructive',
+            });
+            return;
+          }
+        }
+      } catch {
+        // If the teacher-clash pre-check fails (network etc.), fall through
+        // to the server which enforces the same rule.
+      }
+    }
+
     setSaving(true);
     try {
       await api.saveTimetableEntry({

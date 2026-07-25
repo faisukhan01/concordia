@@ -801,12 +801,31 @@ function NewEnrollmentView({
     }
 
     const selectedClass = classes.find((c) => c.id === form.classId);
+
+    // ─── Client-side duplicate Roll Number pre-check ───
+    // The server (POST platform/users) also enforces this and returns 409,
+    // but checking here gives the admissions officer instant feedback and
+    // prevents the optimistic-fallback below from masking the error.
+    const rollNoTrim = form.rollNo.trim();
+    const dupStudent = students.find(
+      (s) => (s.rollNo || '').toLowerCase() === rollNoTrim.toLowerCase(),
+    );
+    if (dupStudent) {
+      toast({
+        title: 'Duplicate Roll Number',
+        description: `Roll Number "${rollNoTrim}" is already used by ${dupStudent.name}. Please use a different roll number.`,
+        variant: 'destructive',
+      });
+      setStep(2);
+      return;
+    }
+
     const body: any = {
       name: form.name.trim(),
-      rollNo: form.rollNo.trim(),
+      rollNo: rollNoTrim,
       // Internal placeholder — the Accountant sets the real login later.
       password: genTempPassword(),
-      email: `${form.rollNo.trim().toLowerCase()}@pending.concordia.edu.pk`,
+      email: `${rollNoTrim.toLowerCase()}@pending.concordia.edu.pk`,
       role: 'student',
       instituteId: user?.instituteId,
       branchId: user?.branchId,
@@ -845,8 +864,27 @@ function NewEnrollmentView({
       onCreated();
       setCreated(newStudent);
     } catch (e: any) {
-      // Optimistic fallback so the demo still flows when the backend
-      // hasn't been wired for the admissions role yet.
+      // If the server rejected this as a duplicate (roll number / email /
+      // CNIC already in use), surface the error and STOP — do NOT fall
+      // back to a local record, because that would silently create a
+      // second student with the same identifier.
+      const msg = (e?.message || '').toLowerCase();
+      const isDuplicate =
+        e?.status === 409 ||
+        msg.includes('already') ||
+        msg.includes('duplicate') ||
+        msg.includes('exists');
+      if (isDuplicate) {
+        toast({
+          title: 'Could not enroll student',
+          description: e?.message || 'A student with this roll number, email, or CNIC already exists.',
+          variant: 'destructive',
+        });
+        setStep(2);
+        return;
+      }
+      // For genuine network / backend-outage errors only, fall back to a
+      // local record so the demo still flows.
       const newStudent: any = {
         id: `local-${Date.now()}`,
         ...body,
