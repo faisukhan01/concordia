@@ -80,7 +80,6 @@ import {
   CheckCircle2,
   Printer,
   ArrowLeft,
-  X,
   Pencil,
   Unlock,
   ShieldAlert,
@@ -349,14 +348,6 @@ const MISC_CHARGE_TYPES = ['Admission Fee', 'Exam Fee', 'Other'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-// Default subject suggestions shown in the Teacher Logins tab when the
-// api.reference() endpoint fails or returns an empty list.
-const DEFAULT_SUBJECTS = [
-  'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Urdu',
-  'Islamiat', 'Pakistan Studies', 'Computer Science', 'Economics',
-  'Accounting', 'Business Studies',
 ];
 
 const fmtMoney = (n: number) => `Rs ${Number(n || 0).toLocaleString('en-PK')}`;
@@ -2308,21 +2299,20 @@ function LoginsView({
     Record<string, { rollNo: string; password: string }>
   >({});
 
-  // --- Teacher login form state (new) ---
+  // --- Teacher login form state ---
+  // Note: the accountant only creates the teacher's LOGIN (name, ID,
+  // email, password). Subjects and classes are assigned later by the
+  // Academic Office, so they are intentionally NOT part of this form.
   const [form, setForm] = useState({
     name: '',
     rollNo: '',
     email: '',
     password: '',
-    subjects: [] as string[],
-    subjectInput: '',
   });
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState<{ user: string; pass: string; name: string } | null>(
     null,
   );
-  const [suggestedSubjects, setSuggestedSubjects] = useState<string[]>([]);
-  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   // --- Student edit + block state (Task 15) ---
@@ -2359,40 +2349,11 @@ function LoginsView({
     email: '',
     password: '',
     title: '',
-    subjects: [] as string[],
-    subjectInput: '',
-    classes: [] as string[],
-    classInput: '',
   });
   const [revealTeacherPw, setRevealTeacherPw] = useState(false);
   const [teacherPwLoading, setTeacherPwLoading] = useState(false);
   const [savingTeacher, setSavingTeacher] = useState(false);
   const [blockingTeacherId, setBlockingTeacherId] = useState('');
-
-  // Lazy-load suggested subjects the first time the Teacher tab is opened.
-  // Falls back to the hardcoded DEFAULT_SUBJECTS list if the API fails or
-  // returns nothing.
-  useEffect(() => {
-    if (tab !== 'teacher' || suggestedLoaded) return;
-    let cancelled = false;
-    api
-      .reference()
-      .then((r) => {
-        if (cancelled) return;
-        const list =
-          Array.isArray(r?.subjects) && r.subjects.length > 0 ? r.subjects : DEFAULT_SUBJECTS;
-        setSuggestedSubjects(list);
-        setSuggestedLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSuggestedSubjects(DEFAULT_SUBJECTS);
-        setSuggestedLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, suggestedLoaded]);
 
   // Fetch the list of existing teachers (role=teacher, scoped to the
   // accountant's branch) whenever the Teacher tab is opened. The list is
@@ -2414,22 +2375,10 @@ function LoginsView({
   const filteredTeachers = useMemo(() => {
     const q = teachersSearch.trim().toLowerCase();
     if (!q) return teachers;
-    return teachers.filter((t) => {
-      let subjects: string[] = [];
-      try {
-        subjects = Array.isArray(t.subjects)
-          ? t.subjects
-          : JSON.parse(t.subjects || '[]');
-        if (!Array.isArray(subjects)) subjects = [];
-      } catch {
-        subjects = [];
-      }
-      return (
-        t.name?.toLowerCase().includes(q) ||
-        t.rollNo?.toLowerCase().includes(q) ||
-        subjects.some((s) => s.toLowerCase().includes(q))
-      );
-    });
+    return teachers.filter((t) =>
+      t.name?.toLowerCase().includes(q) ||
+      t.rollNo?.toLowerCase().includes(q),
+    );
   }, [teachers, teachersSearch]);
 
   const filtered = useMemo(() => {
@@ -2495,34 +2444,6 @@ function LoginsView({
 
   // ─── Teacher form helpers ───
 
-  const addSubjects = (raw: string) => {
-    const parts = raw
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (parts.length === 0) return;
-    setForm((prev) => {
-      const merged = [...prev.subjects];
-      for (const p of parts) {
-        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
-      }
-      return { ...prev, subjects: merged, subjectInput: '' };
-    });
-  };
-
-  const removeSubject = (s: string) => {
-    setForm((prev) => ({ ...prev, subjects: prev.subjects.filter((x) => x !== s) }));
-  };
-
-  const onSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addSubjects((e.target as HTMLInputElement).value);
-    } else if (e.key === 'Backspace' && form.subjectInput === '' && form.subjects.length > 0) {
-      setForm((prev) => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
-    }
-  };
-
   // --- Password strength meter (simple) ---
   const pwLevel: 'empty' | 'weak' | 'medium' | 'strong' = (() => {
     if (!form.password) return 'empty';
@@ -2554,18 +2475,8 @@ function LoginsView({
     try {
       const password = form.password || 'teacher' + Math.floor(1000 + Math.random() * 9000);
       const email = form.email || `${form.rollNo.toLowerCase()}@concordia.edu.pk`;
-      // Flush any un-committed subject text so it isn't lost on submit.
-      let subjects = form.subjects;
-      if (form.subjectInput.trim()) {
-        const parts = form.subjectInput
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        subjects = [...form.subjects];
-        for (const p of parts) {
-          if (!subjects.some((s) => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
-        }
-      }
+      // Only the login is created here. Subjects / classes are assigned
+      // later by the Academic Office.
       await api.createPlatformUser({
         name: form.name,
         email,
@@ -2574,7 +2485,6 @@ function LoginsView({
         role: 'teacher',
         branchId: user?.branchId,
         instituteId: user?.instituteId,
-        subjects: JSON.stringify(subjects),
         title: 'Teacher',
       });
       setCreated({ user: form.rollNo, pass: password, name: form.name });
@@ -2583,8 +2493,6 @@ function LoginsView({
         rollNo: '',
         email: '',
         password: '',
-        subjects: [],
-        subjectInput: '',
       });
       // Refresh the "Manage Existing Teachers" list so the new teacher
       // appears immediately without a manual Refresh click.
@@ -2725,32 +2633,12 @@ function LoginsView({
   const openEditTeacher = (t: any) => {
     setEditingTeacher(t);
     setRevealTeacherPw(false);
-    // Teacher rows store subjects / classes as JSON strings — parse them
-    // back into arrays so the chip inputs can render them.
-    let subjects: string[] = [];
-    try {
-      subjects = Array.isArray(t.subjects) ? t.subjects : JSON.parse(t.subjects || '[]');
-      if (!Array.isArray(subjects)) subjects = [];
-    } catch {
-      subjects = [];
-    }
-    let classes: string[] = [];
-    try {
-      classes = Array.isArray(t.classes) ? t.classes : JSON.parse(t.classes || '[]');
-      if (!Array.isArray(classes)) classes = [];
-    } catch {
-      classes = [];
-    }
     setTeacherEditForm({
       name: t.name || '',
       rollNo: t.rollNo || '',
       email: t.email || '',
       password: '',
       title: t.title || '',
-      subjects,
-      subjectInput: '',
-      classes,
-      classInput: '',
     });
   };
 
@@ -2776,68 +2664,6 @@ function LoginsView({
     }
   };
 
-  // Chip-input helpers for the teacher edit form — mirror the ones used by
-  // the teacher creation form so the UX is identical.
-  const addEditSubject = (raw: string) => {
-    const parts = raw
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (parts.length === 0) return;
-    setTeacherEditForm((prev) => {
-      const merged = [...prev.subjects];
-      for (const p of parts) {
-        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
-      }
-      return { ...prev, subjects: merged, subjectInput: '' };
-    });
-  };
-  const removeEditSubject = (s: string) => {
-    setTeacherEditForm((prev) => ({ ...prev, subjects: prev.subjects.filter((x) => x !== s) }));
-  };
-  const onEditSubjectKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addEditSubject((e.target as HTMLInputElement).value);
-    } else if (
-      e.key === 'Backspace' &&
-      teacherEditForm.subjectInput === '' &&
-      teacherEditForm.subjects.length > 0
-    ) {
-      setTeacherEditForm((prev) => ({ ...prev, subjects: prev.subjects.slice(0, -1) }));
-    }
-  };
-
-  const addEditClass = (raw: string) => {
-    const parts = raw
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (parts.length === 0) return;
-    setTeacherEditForm((prev) => {
-      const merged = [...prev.classes];
-      for (const p of parts) {
-        if (!merged.some((s) => s.toLowerCase() === p.toLowerCase())) merged.push(p);
-      }
-      return { ...prev, classes: merged, classInput: '' };
-    });
-  };
-  const removeEditClass = (s: string) => {
-    setTeacherEditForm((prev) => ({ ...prev, classes: prev.classes.filter((x) => x !== s) }));
-  };
-  const onEditClassKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addEditClass((e.target as HTMLInputElement).value);
-    } else if (
-      e.key === 'Backspace' &&
-      teacherEditForm.classInput === '' &&
-      teacherEditForm.classes.length > 0
-    ) {
-      setTeacherEditForm((prev) => ({ ...prev, classes: prev.classes.slice(0, -1) }));
-    }
-  };
-
   const saveTeacher = async () => {
     if (!editingTeacher) return;
     if (!teacherEditForm.name || !teacherEditForm.rollNo) {
@@ -2846,49 +2672,19 @@ function LoginsView({
     }
     setSavingTeacher(true);
     try {
-      // Flush any un-committed chip text so it isn't lost on save.
-      let subjects = teacherEditForm.subjects;
-      if (teacherEditForm.subjectInput.trim()) {
-        const extra = teacherEditForm.subjectInput
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        subjects = [...teacherEditForm.subjects];
-        for (const p of extra) {
-          if (!subjects.some((s) => s.toLowerCase() === p.toLowerCase())) subjects.push(p);
-        }
-      }
-      let classes = teacherEditForm.classes;
-      if (teacherEditForm.classInput.trim()) {
-        const extra = teacherEditForm.classInput
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        classes = [...teacherEditForm.classes];
-        for (const p of extra) {
-          if (!classes.some((s) => s.toLowerCase() === p.toLowerCase())) classes.push(p);
-        }
-      }
+      // Subjects / classes are managed by the Academic Office, so we
+      // never touch them from the accountant side.
       const body: any = {
         name: teacherEditForm.name,
         rollNo: teacherEditForm.rollNo,
         email: teacherEditForm.email,
-        subjects,
-        classes,
         title: teacherEditForm.title,
       };
       if (teacherEditForm.password) body.password = teacherEditForm.password;
       await api.editUser(editingTeacher.id, body);
       setTeachers((prev) =>
         prev.map((t) =>
-          t.id === editingTeacher.id
-            ? {
-                ...t,
-                ...body,
-                subjects: JSON.stringify(subjects),
-                classes: JSON.stringify(classes),
-              }
-            : t,
+          t.id === editingTeacher.id ? { ...t, ...body } : t,
         ),
       );
       toast({
@@ -3178,10 +2974,11 @@ function LoginsView({
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex gap-3">
             <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
             <div className="text-sm text-gray-600 leading-relaxed">
-              <p className="font-semibold text-gray-900">Teacher accounts are created here.</p>
+              <p className="font-semibold text-gray-900">Teacher logins are created here.</p>
               <p className="mt-1">
                 The username is the Teacher ID and the password is auto-generated (teacher can
-                change it on first sign-in).
+                change it on first sign-in). Subjects and classes are assigned later by the
+                <span className="font-medium text-gray-900"> Academic Office</span>.
               </p>
             </div>
           </div>
@@ -3243,80 +3040,17 @@ function LoginsView({
                   </div>
                 )}
               </Field>
+            </div>
 
-              <div className="md:col-span-2">
-                <Field label="Subjects">
-                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
-                    {form.subjects.map((s) => (
-                      <Badge
-                        key={s}
-                        variant="secondary"
-                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
-                      >
-                        {s}
-                        <button
-                          type="button"
-                          onClick={() => removeSubject(s)}
-                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
-                          aria-label={`Remove ${s}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                    <input
-                      value={form.subjectInput}
-                      onChange={(e) =>
-                        setForm((prev) => ({ ...prev, subjectInput: e.target.value }))
-                      }
-                      onKeyDown={onSubjectKeyDown}
-                      onBlur={(e) => addSubjects(e.target.value)}
-                      placeholder={
-                        form.subjects.length === 0 ? 'Type a subject and press Enter' : ''
-                      }
-                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
-                    />
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5">
-                    Press Enter or comma to add a subject.
-                  </p>
-                  {suggestedSubjects.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                        Suggestions
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {suggestedSubjects.slice(0, 12).map((s) => {
-                          const added = form.subjects.some(
-                            (x) => x.toLowerCase() === s.toLowerCase(),
-                          );
-                          return (
-                            <button
-                              key={s}
-                              type="button"
-                              disabled={added}
-                              onClick={() => addSubjects(s)}
-                              className={cn(
-                                'inline-flex items-center gap-1 text-[11px] font-medium rounded-md border px-2 py-1 transition-colors',
-                                added
-                                  ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                                  : 'border-gray-200 bg-white text-gray-600 hover:border-[#F26522] hover:text-[#F26522]',
-                              )}
-                            >
-                              {added ? (
-                                <Check className="h-3 w-3" />
-                              ) : (
-                                <Plus className="h-3 w-3" />
-                              )}
-                              {s}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </Field>
-              </div>
+            {/* Workflow note — makes it explicit that course / class
+                assignment is the Academic Office's responsibility. */}
+            <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2.5 flex gap-2">
+              <GraduationCap className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[12px] text-amber-800 leading-relaxed">
+                Subjects and classes for this teacher will be assigned by the
+                <span className="font-semibold"> Academic Office</span> after the login is
+                created. The accountant only issues credentials.
+              </p>
             </div>
 
             <div className="mt-5">
@@ -3354,7 +3088,7 @@ function LoginsView({
               <Input
                 value={teachersSearch}
                 onChange={(e) => setTeachersSearch(e.target.value)}
-                placeholder="Search by name, Teacher ID, or subject…"
+                placeholder="Search by name or Teacher ID…"
                 className={`${inputCls} pl-9`}
               />
             </div>
@@ -3377,24 +3111,6 @@ function LoginsView({
               <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
                 {filteredTeachers.map((t) => {
                   const blocked = isBlocked(t);
-                  let subjects: string[] = [];
-                  try {
-                    subjects = Array.isArray(t.subjects)
-                      ? t.subjects
-                      : JSON.parse(t.subjects || '[]');
-                    if (!Array.isArray(subjects)) subjects = [];
-                  } catch {
-                    subjects = [];
-                  }
-                  let classes: string[] = [];
-                  try {
-                    classes = Array.isArray(t.classes)
-                      ? t.classes
-                      : JSON.parse(t.classes || '[]');
-                    if (!Array.isArray(classes)) classes = [];
-                  } catch {
-                    classes = [];
-                  }
                   return (
                     <div
                       key={t.id}
@@ -3422,8 +3138,6 @@ function LoginsView({
                           </div>
                           <p className="text-[11px] text-gray-500 truncate">
                             {t.rollNo || '—'}
-                            {subjects.length > 0 ? ` · ${subjects.join(', ')}` : ''}
-                            {classes.length > 0 ? ` · ${classes.join(', ')}` : ''}
                           </p>
                         </div>
                       </div>
@@ -3685,7 +3399,8 @@ function LoginsView({
               Edit Teacher Portal
             </SheetTitle>
             <SheetDescription className="text-sm text-gray-500">
-              Update name, Teacher ID, credentials, subjects, and classes.
+              Update name, Teacher ID, and credentials. Subjects and classes are
+              managed by the Academic Office.
             </SheetDescription>
           </SheetHeader>
 
@@ -3764,88 +3479,15 @@ function LoginsView({
                   />
                 </Field>
               </div>
+            </div>
 
-              <div className="sm:col-span-2">
-                <Field label="Subjects">
-                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
-                    {teacherEditForm.subjects.map((s) => (
-                      <Badge
-                        key={s}
-                        variant="secondary"
-                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
-                      >
-                        {s}
-                        <button
-                          type="button"
-                          onClick={() => removeEditSubject(s)}
-                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
-                          aria-label={`Remove ${s}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                    <input
-                      value={teacherEditForm.subjectInput}
-                      onChange={(e) =>
-                        setTeacherEditForm((prev) => ({ ...prev, subjectInput: e.target.value }))
-                      }
-                      onKeyDown={onEditSubjectKeyDown}
-                      onBlur={(e) => addEditSubject(e.target.value)}
-                      placeholder={
-                        teacherEditForm.subjects.length === 0
-                          ? 'Type a subject and press Enter'
-                          : ''
-                      }
-                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
-                    />
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5">
-                    Press Enter or comma to add a subject.
-                  </p>
-                </Field>
-              </div>
-
-              <div className="sm:col-span-2">
-                <Field label="Classes">
-                  <div className="rounded-lg border border-gray-200 bg-white focus-within:border-[#F26522] focus-within:ring-2 focus-within:ring-[#F26522]/12 p-1 min-h-10 flex flex-wrap items-center gap-1">
-                    {teacherEditForm.classes.map((c) => (
-                      <Badge
-                        key={c}
-                        variant="secondary"
-                        className="bg-gray-100 text-gray-700 border-transparent gap-1 pl-2 pr-1 py-1 text-xs"
-                      >
-                        {c}
-                        <button
-                          type="button"
-                          onClick={() => removeEditClass(c)}
-                          className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700"
-                          aria-label={`Remove ${c}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                    <input
-                      value={teacherEditForm.classInput}
-                      onChange={(e) =>
-                        setTeacherEditForm((prev) => ({ ...prev, classInput: e.target.value }))
-                      }
-                      onKeyDown={onEditClassKeyDown}
-                      onBlur={(e) => addEditClass(e.target.value)}
-                      placeholder={
-                        teacherEditForm.classes.length === 0
-                          ? 'Type a class and press Enter'
-                          : ''
-                      }
-                      className="flex-1 min-w-[140px] h-8 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none px-1.5"
-                    />
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5">
-                    Press Enter or comma to add a class.
-                  </p>
-                </Field>
-              </div>
+            {/* Academic Office owns course / class assignment. */}
+            <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2.5 flex gap-2">
+              <GraduationCap className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[12px] text-amber-800 leading-relaxed">
+                Subjects and classes for this teacher are assigned by the
+                <span className="font-semibold"> Academic Office</span>.
+              </p>
             </div>
           </div>
 
