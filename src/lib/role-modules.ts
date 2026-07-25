@@ -228,6 +228,7 @@ export const ROLE_MODULES: RoleModules = {
   'student': [
     { group: 'My Portal', items: [
       { id: 'student-dashboard', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
+      { id: 'student-fees', name: 'My Fees', icon: Receipt, color: PRIMARY },
       { id: 'student-results', name: 'My Results', icon: GraduationCap, color: PRIMARY },
       { id: 'student-report-card', name: 'Report Card', icon: Award, color: PRIMARY },
       { id: 'student-attendance', name: 'My Attendance', icon: CalendarCheck, color: SECONDARY },
@@ -251,6 +252,7 @@ export const ROLE_MODULES: RoleModules = {
   'parent': [
     { group: 'My Portal', items: [
       { id: 'student-dashboard', name: 'Dashboard', icon: LayoutDashboard, color: PRIMARY },
+      { id: 'student-fees', name: 'Fees', icon: Receipt, color: PRIMARY },
       { id: 'student-results', name: 'Results', icon: GraduationCap, color: PRIMARY },
       { id: 'student-report-card', name: 'Report Card', icon: Award, color: PRIMARY },
       { id: 'student-attendance', name: 'Attendance', icon: CalendarCheck, color: SECONDARY },

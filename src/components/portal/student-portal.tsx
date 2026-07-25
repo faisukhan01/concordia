@@ -68,7 +68,13 @@ import {
   ClipboardList,
   ChevronRight,
   Sparkles,
+  Receipt,
+  Download,
+  Wallet,
+  Loader2,
+  DollarSign,
 } from 'lucide-react';
+import { buildFeeChallan, savePdf, fmtMoney as pdfFmtMoney } from '@/lib/pdf-utils';
 
 type Props = { activeModule: string; user: any };
 
@@ -479,6 +485,8 @@ export function StudentPortal({ activeModule, user }: Props) {
   switch (moduleId) {
     case 'student-dashboard':
       return <StudentDashboard user={user} />;
+    case 'student-fees':
+      return <StudentFees user={user} />;
     case 'student-results':
       return <StudentResults user={user} />;
     case 'student-report-card':
@@ -809,6 +817,317 @@ function StudentDashboard({ user }: { user: any }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 1b. My Fees — installments + monthly challans set by the Accountant,
+//     each downloadable as a branded PDF. View-only for the student.
+// ═══════════════════════════════════════════════════════════════════════
+
+function StudentFees({ user }: { user: any }) {
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const studentId = user?.id;
+  const isParent = user?.role === 'parent';
+
+  const load = () => {
+    if (!studentId) {
+      setError('No student record linked to this account.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    api
+      .getFeeInvoices(studentId)
+      .then((data) => setInvoices(Array.isArray(data) ? data : []))
+      .catch((e) => setError(e?.message || 'Could not load your fee records.'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, [studentId]);
+
+  // Sort: installments first (by dueDate asc), then monthly (by year/month desc)
+  const sorted = useMemo(() => {
+    return [...invoices].sort((a, b) => {
+      const aType = (a.type || '').toLowerCase() === 'installment' ? 0 : 1;
+      const bType = (b.type || '').toLowerCase() === 'installment' ? 0 : 1;
+      if (aType !== bType) return aType - bType;
+      if (aType === 0) return (a.dueDate || '').localeCompare(b.dueDate || '');
+      return (b.year || 0) - (a.year || 0) || (a.month || '').localeCompare(b.month || '');
+    });
+  }, [invoices]);
+
+  const installments = sorted.filter((i) => (i.type || '').toLowerCase() === 'installment');
+  const monthly = sorted.filter((i) => (i.type || '').toLowerCase() !== 'installment');
+
+  const totalPayable = invoices.reduce((acc, i) => acc + Number(i.amount || 0), 0);
+  const totalPaid = invoices
+    .filter((i) => (i.status || '').toLowerCase() === 'paid')
+    .reduce((acc, i) => acc + Number(i.paidAmount || i.amount || 0), 0);
+  const totalOutstanding = totalPayable - totalPaid;
+
+  const downloadPdf = async (inv: any) => {
+    setDownloadingId(inv.id);
+    try {
+      let data = inv;
+      try {
+        const full = await api.getChallanData(inv.id);
+        data = { ...inv, ...full };
+      } catch {}
+      const doc = await buildFeeChallan({
+        instituteName: data.instituteName || user?.instituteName,
+        branchName: data.branchName || user?.branchName,
+        docTitle: 'Fee Challan',
+        docSubtitle: 'Student Portal',
+        refLabel: 'Challan #',
+        refValue: data.challanNo || String(data.id || '').slice(0, 12),
+        studentName: data.studentName || user?.name || '—',
+        rollNo: data.rollNo || user?.rollNo || '—',
+        className: data.className || data.class || user?.class || '',
+        section: data.section || user?.section,
+        challanNo: data.challanNo || String(data.id || '').slice(0, 12),
+        amount: data.amount,
+        type: data.type || 'Tuition',
+        status: data.status || 'Unpaid',
+        dueDate: data.dueDate,
+        month: data.month,
+        year: data.year,
+        paidDate: data.paidDate || data.paidAt,
+      });
+      const fileName = `Challan-${data.challanNo || data.id}.pdf`;
+      savePdf(doc, fileName);
+      toast({ title: 'Challan downloaded', description: fileName });
+    } catch (e: any) {
+      toast({
+        title: 'Could not download PDF',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const feeLabel = isParent ? "Your child's fees" : 'My Fees';
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={feeLabel}
+        subtitle="Installments and monthly challans set by the Accountant — download any as PDF."
+      />
+
+      {/* KPI strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          icon={Wallet}
+          label="Total Payable"
+          value={pdfFmtMoney(totalPayable)}
+          sub={`${invoices.length} invoice(s)`}
+        />
+        <StatCard
+          icon={CheckCircle2}
+          label="Paid"
+          value={pdfFmtMoney(totalPaid)}
+          sub={invoices.filter((i) => (i.status || '').toLowerCase() === 'paid').length + ' paid'}
+        />
+        <StatCard
+          icon={AlertCircle}
+          label="Outstanding"
+          value={pdfFmtMoney(totalOutstanding)}
+          sub={invoices.filter((i) => (i.status || '').toLowerCase() !== 'paid').length + ' pending'}
+        />
+      </div>
+
+      {/* Installments section */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader
+          title="Installments"
+          desc={
+            installments.length
+              ? `${installments.length} installment(s) — dates set by the Accountant.`
+              : 'No installment plan yet. The Accountant will create one from your locked base fee.'
+          }
+        />
+        {loading ? (
+          <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+        ) : error ? (
+          <ErrorRow message={error} onRetry={load} />
+        ) : installments.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title="No installments yet"
+            desc="Once the Accountant splits your locked base fee into installments, each one will appear here with its due date and a Download button."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Description
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Due Date
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
+                    Amount
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Status
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
+                    PDF
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {installments.map((inv, i) => {
+                  const isPaid = (inv.status || '').toLowerCase() === 'paid';
+                  return (
+                    <TableRow key={inv.id} className="border-gray-100 hover:bg-gray-50">
+                      <TableCell className="text-sm font-medium text-gray-900">
+                        Installment #{i + 1}
+                        <div className="text-[11px] text-gray-500 mt-0.5 font-mono">
+                          {inv.challanNo || String(inv.id || '').slice(0, 12)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-700">
+                        {inv.dueDate ? formatDate(inv.dueDate) : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
+                        {pdfFmtMoney(Number(inv.amount || 0))}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                            isPaid
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200',
+                          )}
+                        >
+                          {isPaid ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <Clock className="h-3 w-3" />
+                          )}
+                          {inv.status || 'Unpaid'}
+                        </span>
+                        {isPaid && (inv.paidDate || inv.paidAt) && (
+                          <div className="text-[10px] text-gray-400 mt-0.5">
+                            Paid {formatDate(inv.paidDate || inv.paidAt)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 text-xs border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                          onClick={() => downloadPdf(inv)}
+                          disabled={downloadingId === inv.id}
+                        >
+                          {downloadingId === inv.id ? (
+                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          PDF
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Monthly challans section */}
+      {monthly.length > 0 && (
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <SectionHeader
+            title="Monthly Challans"
+            desc={`${monthly.length} monthly tuition challan(s).`}
+          />
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-200 hover:bg-transparent">
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Period
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
+                    Amount
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                    Status
+                  </TableHead>
+                  <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">
+                    PDF
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monthly.map((inv) => {
+                  const isPaid = (inv.status || '').toLowerCase() === 'paid';
+                  return (
+                    <TableRow key={inv.id} className="border-gray-100 hover:bg-gray-50">
+                      <TableCell className="text-sm font-medium text-gray-900">
+                        {inv.month ? inv.month : '—'}{inv.year ? ` ${inv.year}` : ''}
+                        <div className="text-[11px] text-gray-500 mt-0.5 font-mono">
+                          {inv.challanNo || String(inv.id || '').slice(0, 12)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold text-gray-900 text-right tabular-nums">
+                        {pdfFmtMoney(Number(inv.amount || 0))}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                            isPaid
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200',
+                          )}
+                        >
+                          {inv.status || 'Unpaid'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 text-xs border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                          onClick={() => downloadPdf(inv)}
+                          disabled={downloadingId === inv.id}
+                        >
+                          {downloadingId === inv.id ? (
+                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5 mr-1" />
+                          )}
+                          PDF
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1622,10 +1622,12 @@ function FeeInstallmentsView({
                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/40 p-4">
                   <SectionHeader
                     title="Create Installment Plan"
-                    desc="Split the locked base fee into 3-5 due-dated installments."
+                    desc="Add each installment with its amount and a due date you pick manually."
                   />
                   <div className="flex items-center gap-2 flex-wrap mb-3">
-                    <span className="text-xs text-gray-500">Quick split:</span>
+                    <span className="text-xs text-gray-500">
+                      Quick split (you can edit dates after):
+                    </span>
                     {[3, 4, 5].map((n) => (
                       <Button
                         key={n}
@@ -1641,18 +1643,19 @@ function FeeInstallmentsView({
                   </div>
                   {rows.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs text-gray-500 bg-white">
-                      No installments yet. Use a quick split or add rows manually.
+                      No installments yet. Click “Add Row” to create each
+                      installment with its own due date, or use a quick split.
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 text-[10px] uppercase tracking-wider text-gray-400 px-1">
+                      <div className="grid grid-cols-[2rem_1fr_1.3fr_2rem] gap-2 text-[10px] uppercase tracking-wider text-gray-400 px-1">
                         <span>#</span>
                         <span>Amount (Rs)</span>
-                        <span>Due Date</span>
+                        <span>Due Date (pick manually)</span>
                         <span />
                       </div>
                       {rows.map((r, i) => (
-                        <div key={r.id} className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 items-center">
+                        <div key={r.id} className="grid grid-cols-[2rem_1fr_1.3fr_2rem] gap-2 items-center">
                           <span className="text-sm font-semibold text-gray-400 text-center">{i + 1}</span>
                           <Input
                             type="number"
@@ -1940,12 +1943,12 @@ function MiscChargesView({ user, students, loading }: { user: any; students: any
     );
   }, [charges, search]);
 
-  // Searchable student list — fixes the "no student shown" issue by showing
-  // every enrolled student in a scrollable, filterable list instead of a
-  // limited native <Select> dropdown.
+  // Searchable student list — students are ONLY shown when the accountant
+  // types a name (or roll # / class). This keeps the list short and focused
+  // instead of dumping every enrolled student at once.
   const filteredStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
-    if (!q) return students;
+    if (!q) return [];
     return students.filter(
       (s) =>
         s.name?.toLowerCase().includes(q) ||
@@ -2072,8 +2075,9 @@ function MiscChargesView({ user, students, loading }: { user: any; students: any
                     <Input
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
-                      placeholder="Search students by name, roll #, class…"
+                      placeholder="Type a student name, roll #, or class to search…"
                       className={`${inputCls} pl-9`}
+                      autoFocus
                     />
                   </div>
                   {loading ? (
@@ -2082,11 +2086,15 @@ function MiscChargesView({ user, students, loading }: { user: any; students: any
                     <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
                       No students enrolled yet. The Admission Office must enroll students first.
                     </div>
+                  ) : studentSearch.trim() === '' ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
+                      Start typing above to search for a student by name, roll #, or class.
+                    </div>
                   ) : (
                     <div className="max-h-56 overflow-y-auto -mr-1 pr-1 space-y-1.5 rounded-lg border border-gray-200 p-1.5">
                       {filteredStudents.length === 0 ? (
                         <div className="px-3 py-2 text-xs text-gray-500 text-center">
-                          No matching students.
+                          No matching students. Try a different name.
                         </div>
                       ) : (
                         filteredStudents.map((s) => (
@@ -2113,7 +2121,7 @@ function MiscChargesView({ user, students, loading }: { user: any; students: any
               )}
             </Field>
 
-            {/* Charge type — 2 fixed + Other (custom) */}
+            {/* Charge type — 2 fixed + Other (custom text input) */}
             <Field label="Charge Type" required>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger className={`${inputCls} w-full`}>
@@ -2128,12 +2136,18 @@ function MiscChargesView({ user, students, loading }: { user: any; students: any
                 </SelectContent>
               </Select>
               {isOther && (
-                <Input
-                  value={customType}
-                  onChange={(e) => setCustomType(e.target.value)}
-                  placeholder="Enter custom charge type (e.g. Sports Fee, Trip Fee…)"
-                  className={`${inputCls} w-full mt-2`}
-                />
+                <div className="mt-2">
+                  <label className="block text-[11px] font-medium text-gray-500 mb-1">
+                    Write the charge name
+                  </label>
+                  <Input
+                    value={customType}
+                    onChange={(e) => setCustomType(e.target.value)}
+                    placeholder="e.g. Sports Fee, Trip Fee, Library Fine…"
+                    className={`${inputCls} w-full`}
+                    autoFocus
+                  />
+                </div>
               )}
             </Field>
 
