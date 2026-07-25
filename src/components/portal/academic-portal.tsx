@@ -56,6 +56,16 @@ import {
   TabsTrigger,
   TabsContent,
 } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { toast } from '@/hooks/use-toast';
 import {
   Users, GraduationCap, BookOpen, Calendar, FileText, Award,
@@ -1753,6 +1763,12 @@ function ClassesView({ user }: { user: any }) {
   const [detailClass, setDetailClass] = useState<ClassRow | null>(null);
   const [showAllStudents, setShowAllStudents] = useState(false);
 
+  // Class deletion confirmation dialog state. We use a proper in-app
+  // AlertDialog ("Are you sure?") instead of the browser's native confirm().
+  // deleteTarget holds the class row the user is confirming deletion of.
+  const [deleteTarget, setDeleteTarget] = useState<ClassRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Teacher-assignment state for the class detail sheet
   const [assignTeacherId, setAssignTeacherId] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
@@ -1909,16 +1925,30 @@ function ClassesView({ user }: { user: any }) {
     }
   };
 
-  const del = async (cls: ClassRow) => {
-    if (!confirm(`Delete ${cls.name} — Section ${cls.section}? This cannot be undone.`)) return;
+  // Open the "Are you sure?" confirmation dialog for a class.
+  const requestDelete = (cls: ClassRow) => {
+    setDeleteTarget(cls);
+  };
+
+  // Actually delete the class after the user confirms. The backend now
+  // ALWAYS allows deletion and cascades cleanup of timetable, attendance,
+  // results, teacher assignments, and unlinks students — so this never
+  // throws a "cannot delete" error. Any other failure is surfaced as a toast.
+  const confirmDeleteClass = async () => {
+    const cls = deleteTarget;
+    if (!cls) return;
+    setDeleting(true);
     try {
       await api.deleteClassSection(cls.id);
-      toast({ title: 'Class deleted' });
+      toast({ title: 'Class deleted', description: `${cls.name} — Section ${cls.section} has been removed.` });
       setCapacityMap((prev) => { const next = { ...prev }; delete next[cls.id]; return next; });
       if (detailClass?.id === cls.id) setDetailClass(null);
+      setDeleteTarget(null);
       load();
     } catch (e: any) {
-      toast({ title: 'Cannot delete', description: e?.message || 'This class may have students assigned.', variant: 'destructive' });
+      toast({ title: 'Could not delete class', description: e?.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -2104,7 +2134,7 @@ function ClassesView({ user }: { user: any }) {
                             <Eye className="h-3.5 w-3.5" /> View
                           </button>
                           <button
-                            onClick={() => del(c)}
+                            onClick={() => requestDelete(c)}
                             className="h-8 px-2 text-xs text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded inline-flex items-center gap-1"
                           >
                             <AlertCircle className="h-3.5 w-3.5" /> Delete
@@ -2285,7 +2315,7 @@ function ClassesView({ user }: { user: any }) {
 
                 <SheetFooter>
                   <button
-                    onClick={() => del(detailClass)}
+                    onClick={() => requestDelete(detailClass)}
                     className="h-9 px-4 text-sm font-medium text-rose-600 border border-rose-200 bg-white hover:bg-rose-50 rounded-lg inline-flex items-center justify-center gap-1.5 transition-colors w-full"
                   >
                     <AlertCircle className="h-4 w-4" /> Delete Class
@@ -2296,6 +2326,71 @@ function ClassesView({ user }: { user: any }) {
           })()}
         </SheetContent>
       </Sheet>
+
+      {/* ── Delete class confirmation ──
+          Proper in-app "Are you sure?" dialog (replaces the old native
+          browser confirm()). The backend now ALWAYS allows deletion and
+          cascades cleanup, so the warning text explains what gets removed. */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => { if (!deleting) setDeleteTarget(o ? deleteTarget : null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="h-8 w-8 rounded-lg bg-rose-100 grid place-items-center shrink-0">
+                <AlertCircle className="h-4 w-4 text-rose-600" />
+              </span>
+              Delete this class?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-gray-600">
+                {deleteTarget && (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 flex items-center justify-between">
+                    <span className="text-gray-500">Class</span>
+                    <span className="font-semibold text-gray-900">{deleteTarget.name} — Section {deleteTarget.section}</span>
+                  </div>
+                )}
+                <p>
+                  This will permanently remove the class and clean up everything tied to it:
+                </p>
+                <ul className="space-y-1 text-xs text-gray-500 pl-1">
+                  <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">•</span> Timetable entries for this class</li>
+                  <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">•</span> Attendance records for this class</li>
+                  <li className="flex items-start gap-1.5"><span className="text-rose-500 mt-0.5">•</span> Test results &amp; teacher subject assignments</li>
+                  <li className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">•</span> Students in this class are <span className="font-medium">unlinked</span> (their accounts stay — only their class placement is cleared)</li>
+                </ul>
+                <p className="flex gap-1.5 text-xs text-rose-600 font-medium pt-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>This action cannot be undone.</span>
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              className="border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg"
+              disabled={deleting}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); confirmDeleteClass(); }}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white rounded-lg"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="h-4 w-4 mr-1.5" />
+                  Yes, delete class
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

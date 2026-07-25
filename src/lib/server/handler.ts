@@ -672,11 +672,29 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       const cls = await db.execute({ sql: 'SELECT * FROM classes WHERE id = ?', args: [id] });
       if (cls.rows.length === 0) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
       const c = cls.rows[0] as any;
-      const siblings = await db.execute({ sql: 'SELECT id FROM classes WHERE branchId = ? AND name = ?', args: [c.branchId, c.name] });
-      if (siblings.rows.length <= 1) return NextResponse.json({ error: 'Cannot delete the only section for this class' }, { status: 400 });
-      const students = await db.execute({ sql: 'SELECT id FROM users WHERE class = ? AND section = ? AND role = ?', args: [c.name, c.section, 'student'] });
-      if (students.rows.length > 0) return NextResponse.json({ error: 'Cannot delete section with students assigned' }, { status: 400 });
+
+      // ── Cascade cleanup ────────────────────────────────────────────────
+      // A class is referenced by several tables. Deleting the class row alone
+      // would leave orphaned records (and the timetable/attendance/results
+      // would still show a ghost class). So we clean up everything tied to
+      // this classId first, then unlink any students assigned to this
+      // class+section (their account stays — just their class placement is
+      // cleared, since the class no longer exists). This makes the class
+      // ALWAYS deletable, matching the user's expectation.
       await db.execute({ sql: 'DELETE FROM class_courses WHERE classId = ?', args: [id] });
+      await db.execute({ sql: 'DELETE FROM teacher_class_courses WHERE classId = ?', args: [id] });
+      await db.execute({ sql: 'DELETE FROM timetable WHERE classId = ?', args: [id] });
+      await db.execute({ sql: 'DELETE FROM attendance WHERE classId = ?', args: [id] });
+      await db.execute({ sql: 'DELETE FROM results WHERE classId = ?', args: [id] });
+      // Unlink students whose placement was this class+section. We do NOT
+      // delete student accounts — that's destructive and not what the user
+      // asked for. We just clear their class/section so they can be
+      // re-enrolled into another class later.
+      await db.execute({
+        sql: "UPDATE users SET class = NULL, section = NULL WHERE class = ? AND section = ? AND role = 'student'",
+        args: [c.name, c.section],
+      });
+      // Finally, delete the class row itself.
       await db.execute({ sql: 'DELETE FROM classes WHERE id = ?', args: [id] });
       return NextResponse.json({ success: true });
     }
