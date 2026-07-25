@@ -84,8 +84,6 @@ import {
   Clock,
   Info,
   KeyRound,
-  Image as ImageIcon,
-  X,
   Download,
   Eye,
   Phone,
@@ -597,7 +595,6 @@ type EnrollForm = {
   guardian: string;
   guardianPhone: string;
   baseFee: string;
-  photoUrl: string;
 };
 
 const emptyForm: EnrollForm = {
@@ -614,7 +611,6 @@ const emptyForm: EnrollForm = {
   guardian: '',
   guardianPhone: '',
   baseFee: '',
-  photoUrl: '',
 };
 
 function NewEnrollmentView({
@@ -755,22 +751,6 @@ function NewEnrollmentView({
 
   const goBack = () => setStep((s) => (s === 3 ? 2 : s === 2 ? 1 : s));
 
-  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1.5 * 1024 * 1024) {
-      toast({
-        title: 'Image too large',
-        description: 'Please pick a photo under 1.5 MB.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => set('photoUrl', String(reader.result || ''));
-    reader.readAsDataURL(file);
-  };
-
   const lockFeeNow = () => {
     const v = Number(form.baseFee);
     if (!form.baseFee || isNaN(v) || v <= 0) {
@@ -843,7 +823,7 @@ function NewEnrollmentView({
       address: form.address.trim() || null,
       prevResult: form.prevResult.trim() || null,
       program: form.program,
-      photoUrl: form.photoUrl || null,
+      photoUrl: null,
     };
     if (feeLocked && form.baseFee) {
       body.baseFee = Number(form.baseFee);
@@ -1237,64 +1217,6 @@ function NewEnrollmentView({
                 />
               </Field>
             </div>
-            <div className="md:col-span-2">
-              <Field label="Student Photograph">
-                <div className="flex items-center gap-4">
-                  {/* Preview: 96x96 (h-24 w-24), with hover "Change" overlay
-                      and a circular Remove X button in the top-right corner.
-                      Both controls appear only when a photo is set. */}
-                  <div className="relative group shrink-0">
-                    <div className="h-24 w-24 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden grid place-items-center">
-                      {form.photoUrl ? (
-                        <img
-                          src={form.photoUrl}
-                          alt="Preview"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <ImageIcon className="h-7 w-7 text-gray-300" />
-                      )}
-                    </div>
-                    {/* Hover "Change" overlay — wraps a hidden file input */}
-                    {form.photoUrl && (
-                      <label className="absolute inset-0 rounded-xl bg-black/40 text-white text-[11px] font-medium grid place-items-center cursor-pointer opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                        Change
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={onPhoto}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
-                    {/* Circular Remove button — top-right, only when photo set */}
-                    {form.photoUrl && (
-                      <button
-                        type="button"
-                        onClick={() => set('photoUrl', '')}
-                        aria-label="Remove photo"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border border-gray-200 shadow-sm grid place-items-center text-gray-500 hover:text-red-600 hover:border-red-200 transition-colors"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {!form.photoUrl && (
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={onPhoto}
-                        className="text-sm h-10 rounded-lg border border-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-gray-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-gray-700 hover:file:bg-gray-100"
-                      />
-                    )}
-                    <p className="text-[11px] text-gray-500">
-                      JPG/PNG, up to 1.5 MB. Hover the preview to change.
-                    </p>
-                  </div>
-                </div>
-              </Field>
-            </div>
           </div>
 
           <div className="flex gap-2 justify-end mt-6">
@@ -1515,7 +1437,6 @@ function NewEnrollmentView({
                   feeLocked && form.baseFee ? fmtMoney(Number(form.baseFee)) : 'Not finalized'
                 }
               />
-              <Row label="Photo" value={form.photoUrl ? 'Attached' : 'None'} />
             </div>
           </div>
 
