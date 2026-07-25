@@ -233,7 +233,7 @@ const KB: KBEntry[] = [
     keywords: ['academic portal', 'academic office', 'academic do', 'academic role', 'academic can do', 'what does academic'],
     question: 'What does the Academic Office portal do?',
     answer:
-      "The Academic Office manages all academics:\n\n• Announcements — post notices to classes/audiences\n• Classes — create classes, assign teachers to classes\n• Timetable — create class timetables (with clash detection)\n• Date Sheets — schedule exam date sheets\n• Monthly Tests — create tests for teachers to enter marks\n• Result Cards — view class-wise test results + download PDFs\n• Teachers — manage teacher profiles + subject/class assignments",
+      "The Academic Office manages all academics:\n\n• Announcements — post notices to classes/audiences\n• Classes — create classes, assign teachers to classes\n• Timetable — create class timetables (with clash detection)\n• Date Sheets — schedule exam date sheets (you must create an exam first on the Exams page)\n• Exams — create every assessment (Monthly Tests, Midterm, Final, Quiz, etc.). Click an exam card to build its date sheet.\n• Result Cards — view class-wise test results + download PDFs\n• Teachers — manage teacher profiles + subject/class assignments",
     category: 'academic',
   },
   {
@@ -286,10 +286,34 @@ const KB: KBEntry[] = [
   },
   {
     id: 'aca-test',
-    keywords: ['monthly test', 'create test', 'new test', 'test session', 'add test', 'test name'],
-    question: 'How do I create a monthly test?',
+    keywords: [
+      'monthly test', 'create test', 'new test', 'test session', 'add test', 'test name',
+      'create exam', 'add exam', 'new exam', 'exam name', 'final exam', 'midterm', 'mid term', 'quiz',
+      'create monthly test', 'exams page', 'academic exam', 'exam type',
+      // Phrase variants accounting for articles (a/an/the) so "how do I create an exam" matches.
+      'create an exam', 'add an exam', 'new exam', 'create a exam', 'create the exam',
+      'make an exam', 'make a exam', 'make exam', 'schedule exam', 'schedule an exam',
+      'how do i create exam', 'how to create exam', 'how do i create an exam', 'how to create an exam',
+    ],
+    question: 'How do I create an exam or monthly test?',
     answer:
-      "Go to Monthly Tests → enter the test name (e.g. 'Monthly Test 1') in the 'Create New Test' box → click 'Create'. Teachers will then see this test in their portal and can enter + lock subject-wise marks for it. Once marks are submitted, the test appears in Result Cards.",
+      "Go to the Exams page (sidebar → Classes & Academics → Exams). Enter the exam name (e.g. 'Monthly Test 1', 'Midterm 2026', 'Final Exam'), pick a Type (Monthly Test, Midterm, Final, Quiz, Assignment, Oral Test, Class Test, or Other), and click 'Create Exam'.\n\n• The exam appears instantly as a card on the same page.\n• You can't create two exams with the same name in your branch — the system blocks duplicates.\n• Click 'Build Date Sheet' on any exam card to jump to the Date Sheets page with that exam's name pre-filled.\n• Teachers will see the exam name in their marks-entry dropdown.",
+    category: 'academic',
+  },
+  {
+    id: 'aca-exam-duplicate',
+    keywords: ['duplicate exam', 'same exam name', 'exam already exists', 'cannot create exam', 'exam name taken', 'duplicate test name', 'same test name'],
+    question: "Why won't it let me create an exam with the same name?",
+    answer:
+      "Each exam name must be unique within your branch (checked case-insensitively). If you try to create 'Monthly Test 1' and one already exists, you'll see a 'Duplicate exam name' message. Pick a different name like 'Monthly Test 1 — Retake' or 'Monthly Test 2'. This keeps teacher marks, date sheets, and result cards tied to one unambiguous exam.",
+    category: 'academic',
+  },
+  {
+    id: 'aca-datesheet-gate',
+    keywords: ['date sheet without exam', 'no exam date sheet', "can't create date sheet", 'create exam first', 'date sheet blocked', 'no exams yet', 'date sheet requires exam', 'date sheet needs exam'],
+    question: "Why can't I create a date sheet?",
+    answer:
+      "Date sheets require at least one exam to exist first. If the Date Sheets page shows an amber 'Create an exam first' banner (or the 'New Date Sheet' button is disabled), go to the Exams page, create your Monthly Test / Midterm / Final, then return. When you click 'Build Date Sheet' on an exam card, the Date Sheets form opens automatically with that exam's name pre-selected.",
     category: 'academic',
   },
   {
@@ -297,7 +321,7 @@ const KB: KBEntry[] = [
     keywords: ['date sheet', 'datesheet', 'exam schedule', 'exam date', 'create datesheet', 'add datesheet'],
     question: 'How do I create a date sheet?',
     answer:
-      "Go to Date Sheets → 'Add Date Sheet' → enter the title (e.g. 'Mid-Term 2026') → add rows for each subject with its date and time → click 'Save'. The date sheet is visible to students in their portal.",
+      "Easiest way: go to Exams → click 'Build Date Sheet' on an exam card. You'll land on the Date Sheets page with the exam name already filled in. Then add rows (Subject + Date + Time), enter the class, and click 'Publish Date Sheet'.\n\nYou can also open Date Sheets directly and click 'New Date Sheet' — but you must pick an existing exam from the dropdown. If no exams exist yet, the page shows an amber 'Create an exam first' banner. The published date sheet is visible to students in their portal.",
     category: 'academic',
   },
   {
@@ -404,12 +428,33 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function scoreEntry(entry: KBEntry, msgWords: Set<string>, msgText: string): number {
+// Stopwords stripped from BOTH the message and multi-word keywords so that
+// "how do I create an exam" matches the keyword "create exam". This makes the
+// bot forgiving of natural phrasing without needing every variant hardcoded.
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'do', 'does', 'did', 'i', 'you', 'we', 'they', 'he', 'she',
+  'how', 'to', 'can', 'could', 'would', 'should', 'is', 'are', 'am', 'was',
+  'were', 'be', 'been', 'my', 'your', 'our', 'their', 'me', 'him', 'her',
+  'please', 'in', 'on', 'at', 'for', 'of', 'with', 'and', 'or', 'as', 'by',
+  'this', 'that', 'these', 'those', 'it', 'its',
+]);
+
+function stripStopwords(s: string): string {
+  return s.split(' ').filter(w => !STOPWORDS.has(w)).join(' ');
+}
+
+function scoreEntry(entry: KBEntry, msgWords: Set<string>, msgText: string, msgTextNoStop: string): number {
   let score = 0;
   for (const kw of entry.keywords) {
-    // Multi-word keyword → substring match on the full normalized message.
     if (kw.includes(' ')) {
-      if (msgText.includes(kw)) score += 3; // phrase match = strong signal
+      // Multi-word keyword → substring match on the full normalized message,
+      // AND a second pass with stopwords stripped from both sides so
+      // "create exam" matches "create an exam".
+      if (msgText.includes(kw)) {
+        score += 3; // phrase match = strong signal
+      } else if (msgTextNoStop.includes(stripStopwords(kw))) {
+        score += 2; // stopword-stripped phrase match = medium signal
+      }
     } else {
       // Single-word keyword → exact token match.
       if (msgWords.has(kw)) score += 1;
@@ -422,20 +467,157 @@ function findBest(userMessage: string): { entry: KBEntry | null; score: number }
   const norm = normalize(userMessage);
   if (!norm) return { entry: null, score: 0 };
   const msgWords = new Set(norm.split(' '));
+  const msgTextNoStop = stripStopwords(norm);
   let best: KBEntry | null = null;
   let bestScore = 0;
   for (const entry of KB) {
-    const s = scoreEntry(entry, msgWords, norm);
+    const s = scoreEntry(entry, msgWords, norm, msgTextNoStop);
     if (s > bestScore) { bestScore = s; best = entry; }
   }
   return { entry: best, score: bestScore };
 }
 
+// ─────────────────────────── Small Talk Engine ─────────────────────────────
+// Handles greetings (hi/hello/hey), thanks, bye, and common pleasantries so
+// the bot feels like a real assistant instead of going straight to the
+// "I'm not sure I caught that" fallback. Runs BEFORE the knowledge base.
+type SmallTalk = {
+  id: string;
+  // Tokens that trigger this reply (matched as whole words in the normalized
+  // message). Order matters only for readability.
+  triggers: string[];
+  // Single reply OR a pick-list (rotates for variety so the bot doesn't
+  // feel robotic when greeted multiple times).
+  replies: string[];
+  // If true, we still ALSO scan the KB afterwards (e.g. "hi" alone → stop,
+  // but "hi how do I enroll" → greeting + answer). For pure pleasantries we
+  // stop, since the user isn't asking a portal question.
+  continueToKB?: boolean;
+};
+
+const SMALL_TALK: SmallTalk[] = [
+  {
+    id: 'greet',
+    triggers: ['hi', 'hello', 'hey', 'salam', 'assalam', 'aoa', 'assalamualaikum', 'salaam', 'hola', 'yo', 'hiya', 'heyy', 'hii', 'hiii'],
+    replies: [
+      "Hi there! 👋 I'm the Concordia Assistant. How can I help you with the portal today?",
+      "Hello! 😊 What would you like to do — enroll a student, check fees, enter marks, or something else?",
+      "Hey! I can guide you through any portal (Admin, Admissions, Accountant, Academic, Teacher, Student, Parent). What do you need?",
+      "Salam! Welcome to Concordia. Tell me what you're trying to do and I'll point you to the right page.",
+    ],
+  },
+  {
+    id: 'good-morning',
+    triggers: ['good morning', 'gm', 'morning'],
+    replies: [
+      "Good morning! ☀️ What can I help you with today?",
+      "Morning! Ready to get started? Ask me anything about the portal.",
+    ],
+  },
+  {
+    id: 'good-afternoon',
+    triggers: ['good afternoon', 'afternoon'],
+    replies: ["Good afternoon! How can I assist you with the portal?"],
+  },
+  {
+    id: 'good-evening',
+    triggers: ['good evening', 'evening'],
+    replies: ["Good evening! What would you like help with?"],
+  },
+  {
+    id: 'how-are-you',
+    triggers: ['how are you', 'how r u', 'how are u', 'hows it going', 'how is it going', "how's it going", 'whats up', "what's up", 'wassup', 'sup'],
+    replies: [
+      "I'm doing great, thanks for asking! 😄 I'm always ready to help you navigate the portal. What do you need?",
+      "All good here! I'm a built-in guide, so I'm always on duty. How can I help you today?",
+    ],
+  },
+  {
+    id: 'thanks',
+    triggers: ['thanks', 'thank you', 'thx', 'ty', 'thanku', 'thanku so much', 'appreciate', 'appreciate it', 'grateful', 'cheers'],
+    replies: [
+      "You're welcome! 😊 Anything else I can help with?",
+      "Happy to help! Let me know if you need anything else.",
+      "Anytime! I'm here whenever you need guidance.",
+    ],
+  },
+  {
+    id: 'welcome',
+    triggers: ["you're welcome", 'your welcome', 'no problem', 'np'],
+    replies: ["😊 What else can I help you with?"],
+  },
+  {
+    id: 'bye',
+    triggers: ['bye', 'goodbye', 'see you', 'see ya', 'cya', 'good night', 'goodnight', 'later', 'farewell'],
+    replies: [
+      "Goodbye! 👋 Come back anytime you need help with the portal.",
+      "See you later! Have a great day. 😊",
+      "Bye for now! I'll be right here when you need me.",
+    ],
+  },
+  {
+    id: 'ok',
+    triggers: ['ok', 'okay', 'okk', 'kk', 'got it', 'understood', 'sounds good', 'great', 'nice', 'cool'],
+    replies: [
+      "Great! Let me know if you need help with anything else.",
+      "👍 Anything else I can help with?",
+    ],
+  },
+  {
+    id: 'yes',
+    triggers: ['yes', 'yeah', 'yep', 'yup', 'sure', 'of course'],
+    replies: ["Great — tell me what you'd like to do and I'll guide you."],
+  },
+  {
+    id: 'no',
+    triggers: ['no', 'nope', 'nah', 'not really'],
+    replies: ["No problem! I'm here if you need anything else. 😊"],
+  },
+  {
+    id: 'help',
+    triggers: ['help', 'help me', 'i need help', 'can you help', 'can u help', 'assist', 'assistance', 'support', 'stuck', 'confused', 'lost', 'dont know', "don't know", 'not sure'],
+    replies: [
+      "Of course! I can help with anything in the portal — Admissions, Accountant, Academic, Teacher, Student, or Parent. Tell me what you're trying to do, or tap a suggestion below.",
+      "I'm here to help! 😊 What are you trying to do? You can ask me things like 'How do I enroll a student?' or 'How do I view result cards?'.",
+    ],
+  },
+];
+
+// Rotating index for each small-talk id so the same greeting doesn't repeat.
+const smallTalkRotation: Record<string, number> = {};
+
+function matchSmallTalk(userMessage: string): string | null {
+  const norm = normalize(userMessage);
+  if (!norm) return null;
+  const words = new Set(norm.split(' '));
+
+  for (const st of SMALL_TALK) {
+    let hit = false;
+    for (const trig of st.triggers) {
+      if (trig.includes(' ')) {
+        // Multi-word trigger → substring match.
+        if (norm.includes(trig)) { hit = true; break; }
+      } else {
+        if (words.has(trig)) { hit = true; break; }
+      }
+    }
+    if (hit) {
+      const i = smallTalkRotation[st.id] || 0;
+      const reply = st.replies[i % st.replies.length];
+      smallTalkRotation[st.id] = (i + 1) % st.replies.length;
+      return reply;
+    }
+  }
+  return null;
+}
+
 // ─────────────────────────── Suggested Questions ───────────────────────────
-// Shown as chips below the welcome message + as quick replies after each answer.
+// Shown as chips below the welcome message. Intentionally does NOT include
+// "Who built you?" — owner questions are answered when asked directly, but
+// we don't proactively suggest them. The focus is portal help.
 const SUGGESTIONS = [
-  'Who built you?',
   'How do I enroll a student?',
+  'How do I create an exam?',
   'How do I view result cards?',
   'How do I create a teacher login?',
   'How do I set installment dates?',
@@ -455,7 +637,7 @@ const WELCOME: Msg = {
 };
 
 const FALLBACK =
-  "I'm not sure I caught that. I can help with:\n\n• Admissions — enrolling students, receipts\n• Accountant — fees, installments, logins, salary slips\n• Academic — classes, timetable, result cards\n• Teacher — marks, attendance, materials\n• Student/Parent — fees, results, attendance\n• Owner — who built me\n\nTry asking 'How do I…' for any of these.";
+  "Hmm, I'm not sure about that one — but I can help with almost anything in the portal. Try asking me how to:\n\n• enroll a new student\n• create an exam or monthly test\n• view result cards\n• set fee installments\n• create a teacher login\n• enter marks (as a teacher)\n• view your fees or results\n• fix a timetable clash\n\nOr just tell me what you're trying to do in your own words.";
 
 // ─────────────────────────── Component ─────────────────────────────────────
 export function HelpWidget() {
@@ -500,12 +682,31 @@ export function HelpWidget() {
 
     // Simulate a brief "thinking" delay for a natural feel (still 100% local).
     setTimeout(() => {
+      // 1) Small talk (greetings, thanks, bye, help, etc.) — checked FIRST so
+      //    "Hi" doesn't fall to the generic fallback. Pure pleasantries stop
+      //    here; "help" continues to be conversational.
+      const small = matchSmallTalk(trimmed);
+      // 2) Knowledge base — how-to questions about the portals.
       const { entry } = findBest(trimmed);
-      const reply: Msg = {
-        role: 'bot',
-        text: entry ? entry.answer : FALLBACK,
-        ts: Date.now(),
-      };
+
+      let replyText: string;
+      if (small && !entry) {
+        // Pure small talk — no KB match. Just be conversational.
+        replyText = small;
+      } else if (entry && small) {
+        // e.g. "hi, how do I enroll" → greeting + answer.
+        replyText = small + '\n\n' + entry.answer;
+      } else if (entry) {
+        replyText = entry.answer;
+      } else if (small) {
+        // Small talk matched and was the only hit — but it may have been a
+        // 'help'/'stuck' trigger; append a pointer to suggestions.
+        replyText = small;
+      } else {
+        replyText = FALLBACK;
+      }
+
+      const reply: Msg = { role: 'bot', text: replyText, ts: Date.now() };
       setTyping(false);
       setMessages((m) => [...m, reply]);
     }, 450);

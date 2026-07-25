@@ -34,10 +34,15 @@ type AppState = {
   user: AuthUser;
   token: string | null;
   activeModule: string;
+  // When the Academic Office clicks an exam card on the Exams page, we stash
+  // the exam name here so the Date Sheet page can pre-fill it. Cleared on
+  // consumption / navigation.
+  pendingExamName: string | null;
   setView: (v: View) => void;
   setUser: (u: AuthUser) => void;
   setToken: (t: string | null) => void;
   setActiveModule: (m: string) => void;
+  setPendingExamName: (n: string | null) => void;
   logout: () => void;
 };
 
@@ -71,11 +76,13 @@ export const useApp = create<AppState>()(
       user: null,
       token: null,
       activeModule: 'dashboard',
+      pendingExamName: null,
       setView: (v) => set({ view: v }),
       setUser: (u) => set({ user: u, activeModule: 'dashboard' }),
       setToken: (t) => set({ token: t }),
       setActiveModule: (m) => set({ activeModule: m }),
-      logout: () => set({ view: 'login', user: null, token: null, activeModule: 'dashboard' }),
+      setPendingExamName: (n) => set({ pendingExamName: n }),
+      logout: () => set({ view: 'login', user: null, token: null, activeModule: 'dashboard', pendingExamName: null }),
     }),
     {
       name: 'esm-app',

@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { useApp } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,7 +61,7 @@ import {
   Users, GraduationCap, BookOpen, Calendar, FileText, Award,
   Megaphone, CalendarDays, ClipboardList, Loader2, Search, Copy, Check,
   Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye,
-  UserPlus, UserMinus, Trash2, Download,
+  UserPlus, UserMinus, Trash2, Download, CalendarPlus, Clock,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -905,12 +906,29 @@ function TimetableView({ user }: { user: any }) {
 
 // ───────────────────────── Date Sheets ─────────────────────────
 function DateSheetView({ user }: { user: any }) {
+  const setActiveModule = useApp(s => s.setActiveModule);
+  const pendingExamName = useApp(s => s.pendingExamName);
+  const clearPendingExamName = useApp(s => s.setPendingExamName);
+
   const [items, setItems] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [examName, setExamName] = useState('');
+  const [examsLoading, setExamsLoading] = useState(true);
+  // Read the pending exam name ONCE at mount (switching activeModule remounts
+  // this view, so the initializer picks up a freshly-stashed value each time
+  // the user clicks "Build Date Sheet" on the Exams page). This avoids
+  // calling local setState inside an effect (react-hooks/set-state-in-effect).
+  const [showForm, setShowForm] = useState(() => !!pendingExamName);
+  const [examName, setExamName] = useState(() => pendingExamName || '');
   const [className, setClassName] = useState('');
   const [rows, setRows] = useState([{ subject: '', date: '', time: '' }]);
+
+  const loadExams = useCallback(() => {
+    api.getExams({})
+      .then(d => setExams(Array.isArray(d) ? d : []))
+      .catch(() => setExams([]))
+      .finally(() => setExamsLoading(false));
+  }, []);
 
   const load = useCallback(() => {
     // Date sheets stored as announcements with a special prefix or a dedicated table.
@@ -921,7 +939,16 @@ function DateSheetView({ user }: { user: any }) {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadExams(); }, [load, loadExams]);
+
+  // Clear the stashed pending exam name so a later manual navigation to this
+  // page doesn't re-open the form. The store setter is a zustand action
+  // (not a React setState), so this doesn't trip set-state-in-effect.
+  useEffect(() => {
+    if (pendingExamName) clearPendingExamName(null);
+  }, [pendingExamName, clearPendingExamName]);
+
+  const hasExams = exams.length > 0;
 
   const submit = async () => {
     if (!examName || !className) { toast({ title: 'Exam name and class are required', variant: 'destructive' }); return; }
@@ -943,19 +970,59 @@ function DateSheetView({ user }: { user: any }) {
     }
   };
 
+  const tryNewDateSheet = () => {
+    if (!hasExams) {
+      toast({
+        title: 'Create an exam first',
+        description: 'You need to create at least one exam before you can build a date sheet. Head to the Exams page to add one.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setShowForm(s => !s);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Date Sheets"
-        subtitle="Create and publish exam date sheets for students."
-        action={<button onClick={() => setShowForm(s => !s)} className={btnPrimary}><Plus className="h-4 w-4" /> New Date Sheet</button>}
+        subtitle="Create and publish exam date sheets for students. Pick from the exams you've already created."
+        action={
+          <button onClick={tryNewDateSheet} className={btnPrimary} disabled={!hasExams}>
+            <Plus className="h-4 w-4" /> New Date Sheet
+          </button>
+        }
       />
-      {showForm && (
+
+      {/* Gating banner: no exams yet */}
+      {!examsLoading && !hasExams && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="h-11 w-11 rounded-lg bg-amber-100 grid place-items-center shrink-0">
+            <AlertCircle className="h-5 w-5 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-amber-900">Create an exam first</div>
+            <p className="text-xs text-amber-700 mt-0.5">
+              You can't build a date sheet until at least one exam exists. Head over to the Exams page, create your monthly test, midterm, or final, then come back here — the exam name will be pre-filled for you.
+            </p>
+          </div>
+          <button onClick={() => setActiveModule('academic-tests')} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium h-9 px-4 shrink-0">
+            <FileText className="h-4 w-4" /> Go to Exams
+          </button>
+        </div>
+      )}
+
+      {showForm && hasExams && (
         <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <SectionHeader title="New Date Sheet" desc="Create a date sheet for a monthly test or exam." />
+          <SectionHeader title="New Date Sheet" desc="Create a date sheet for one of your existing exams." />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <Field label="Exam Name" required>
-              <Input value={examName} onChange={e => setExamName(e.target.value)} className={inputCls} placeholder="Monthly Test 1" />
+              <Select value={examName} onValueChange={setExamName}>
+                <SelectTrigger className={inputCls}><SelectValue placeholder="Select an exam…" /></SelectTrigger>
+                <SelectContent>
+                  {exams.map((ex) => <SelectItem key={ex.id} value={ex.name}>{ex.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Class" required>
               <Input value={className} onChange={e => setClassName(e.target.value)} className={inputCls} placeholder="Grade 10" />
@@ -988,7 +1055,7 @@ function DateSheetView({ user }: { user: any }) {
         {loading ? (
           <SkeletonTable rows={3} />
         ) : items.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="No date sheets yet" desc="Create a date sheet to publish it to students." />
+          <EmptyState icon={CalendarDays} title="No date sheets yet" desc={hasExams ? "Click 'New Date Sheet' to create one." : 'Create an exam first, then build a date sheet for it.'} />
         ) : (
           <div className="space-y-2">
             {items.map((a, i) => (
@@ -1004,70 +1071,206 @@ function DateSheetView({ user }: { user: any }) {
   );
 }
 
-// ───────────────────────── Monthly Tests ─────────────────────────
-function TestsView({ user }: { user: any }) {
-  const [items, setItems] = useState<any[]>([]);
+// ───────────────────────── Exams (was "Monthly Tests") ─────────────────────────
+// The Academic Office schedules every kind of assessment here — Monthly Tests,
+// Midterm, Final, Quizzes, Assignments, Oral Tests, Class Tests, etc.
+//
+// Behaviour:
+//   • Each exam is persisted in the `exams` table (branch-scoped).
+//   • Names must be unique per branch (case-insensitive) — the backend
+//     rejects duplicates with HTTP 409 and we surface that message.
+//   • Newly added exams appear instantly as cards on this same page.
+//   • Clicking an exam card stashes its name in the store and navigates to
+//     the Date Sheets page, where the Exam Name field is pre-filled and the
+//     date-sheet form auto-opens.
+//   • The Date Sheets page is gated: if no exams exist yet, the academic
+//     office is told to create one here first.
+function ExamsView({ user }: { user: any }) {
+  const setActiveModule = useApp(s => s.setActiveModule);
+  const setPendingExamName = useApp(s => s.setPendingExamName);
+  const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [testName, setTestName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [type, setType] = useState('Monthly Test');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const EXAM_TYPES = [
+    'Monthly Test', 'Midterm', 'Final', 'Quiz', 'Assignment', 'Oral Test', 'Class Test', 'Other',
+  ];
 
   const load = useCallback(() => {
-    api.getResults({}).then(d => {
-      // Group results by exam name to show as "tests"
-      const all = Array.isArray(d) ? d : [];
-      const byExam: Record<string, any[]> = {};
-      all.forEach(r => { const k = r.exam || 'Untitled'; (byExam[k] = byExam[k] || []).push(r); });
-      setItems(Object.entries(byExam).map(([exam, recs]) => ({ exam, count: recs.length, recs })));
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    setLoading(true);
+    api.getExams({})
+      .then(d => setExams(Array.isArray(d) ? d : []))
+      .catch(() => setExams([]))
+      .finally(() => setLoading(false));
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const createTest = async () => {
-    if (!testName) return;
-    toast({ title: 'Test created', description: `${testName} is now open for teachers to enter marks.` });
-    setTestName('');
+  const createExam = async () => {
+    const clean = name.trim();
+    if (!clean) {
+      toast({ title: 'Enter an exam name', variant: 'destructive' });
+      return;
+    }
+    // Client-side duplicate guard (defence in depth — backend also enforces).
+    if (exams.some(e => String(e.name).toLowerCase() === clean.toLowerCase())) {
+      toast({
+        title: 'Duplicate exam name',
+        description: `An exam named "${clean}" already exists. Please choose a different name.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.createExam({ name: clean, type });
+      toast({ title: 'Exam created', description: `"${clean}" is now available for teachers and date sheets.` });
+      setName('');
+      load();
+    } catch (e: any) {
+      const msg = e?.message || `An exam named "${clean}" already exists.`;
+      toast({ title: 'Could not create exam', description: msg, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeExam = async (id: string) => {
+    try {
+      await api.deleteExam(id);
+      toast({ title: 'Exam deleted' });
+      setConfirmDelete(null);
+      load();
+    } catch {
+      toast({ title: 'Failed to delete exam', variant: 'destructive' });
+    }
+  };
+
+  const openDateSheetFor = (examName: string) => {
+    setPendingExamName(examName);
+    setActiveModule('academic-datesheet');
   };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Monthly Tests" subtitle="Create tests and review submitted marks by teachers." />
-      <div className="rounded-xl border border-gray-200 bg-white p-5 max-w-md">
-        <SectionHeader title="Create New Test" desc="Teachers will see this and can enter marks." />
-        <div className="flex gap-2">
-          <Input value={testName} onChange={e => setTestName(e.target.value)} className={inputCls} placeholder="Monthly Test 1" />
-          <button onClick={createTest} className={btnPrimary}><Plus className="h-4 w-4" /> Create</button>
+      <PageHeader
+        title="Exams"
+        subtitle="Create every assessment — monthly tests, midterms, finals, quizzes, and more. Click an exam to build its date sheet."
+      />
+
+      {/* Create form */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <SectionHeader title="Create New Exam" desc="Teachers will see this in their marks-entry dropdown. Date sheets can be built from it next." />
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 items-end">
+          <Field label="Exam Name" required>
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createExam(); }}
+              className={inputCls}
+              placeholder="e.g. Monthly Test 1, Midterm 2026, Final Exam"
+              maxLength={80}
+            />
+          </Field>
+          <Field label="Type">
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className={inputCls + ' w-44'}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {EXAM_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <button onClick={createExam} disabled={saving || !name.trim()} className={btnPrimary}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Create Exam
+          </button>
         </div>
       </div>
+
+      {/* Exam cards */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <SectionHeader title="Tests" desc="Open and submitted tests." />
+        <SectionHeader
+          title="Exams"
+          desc={exams.length > 0 ? 'Click an exam card to build its date sheet.' : 'No exams yet — create one above to get started.'}
+        />
         {loading ? (
           <SkeletonTable rows={3} />
-        ) : items.length === 0 ? (
-          <EmptyState icon={FileText} title="No tests yet" desc="Create a test to let teachers enter marks." />
+        ) : exams.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No exams yet"
+            desc="Create your first exam above. Teachers can then enter marks, and you can build a date sheet for it."
+          />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-200">
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Test</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Submissions</TableHead>
-                <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((t, i) => (
-                <TableRow key={i} className="border-gray-100 hover:bg-gray-50">
-                  <TableCell className="text-sm font-medium text-gray-900">{t.exam}</TableCell>
-                  <TableCell className="text-sm text-gray-600">{t.count}</TableCell>
-                  <TableCell><span className="inline-flex items-center rounded-md border bg-amber-50 text-amber-700 border-amber-100 px-2 py-0.5 text-[11px] font-medium">Open</span></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {exams.map((ex) => {
+              const isConfirming = confirmDelete === ex.id;
+              return (
+                <div
+                  key={ex.id}
+                  className="group relative rounded-xl border border-gray-200 bg-white p-5 transition-all hover:border-[#F26522]/40 hover:shadow-sm flex flex-col"
+                >
+                  {/* Accent stripe */}
+                  <div className="absolute left-0 top-4 bottom-4 w-1 rounded-r bg-[#F26522]/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="h-10 w-10 rounded-lg bg-[#F26522]/10 grid place-items-center shrink-0">
+                      <FileText className="h-5 w-5 text-[#F26522]" />
+                    </div>
+                    <span className="inline-flex items-center rounded-md border bg-gray-50 text-gray-600 border-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                      {ex.type || 'Exam'}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-base font-semibold text-gray-900 break-words">{ex.name}</h3>
+                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Created {ex.createdAt ? new Date(ex.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                  </p>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2">
+                    <button
+                      onClick={() => openDateSheetFor(ex.name)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#F26522] hover:bg-[#D4541E] text-white text-xs font-medium h-8 px-3 transition-colors"
+                    >
+                      <CalendarPlus className="h-3.5 w-3.5" />
+                      Build Date Sheet
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(ex.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-gray-500 text-xs font-medium h-8 px-3 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
+                  </div>
+
+                  {/* Delete confirmation */}
+                  {isConfirming && (
+                    <div className="absolute inset-0 rounded-xl bg-white/95 backdrop-blur-sm border border-rose-200 flex flex-col items-center justify-center text-center p-5 gap-3">
+                      <AlertCircle className="h-8 w-8 text-rose-500" />
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">Delete this exam?</div>
+                        <div className="text-xs text-gray-500 mt-1">Date sheets and submitted marks referencing it will remain, but the exam card will be removed.</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setConfirmDelete(null)} className="btnSecondary h-8 text-xs">Cancel</button>
+                        <button onClick={() => removeExam(ex.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium h-8 px-3">
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
   );
 }
+
 
 // ───────────────────────── Result Cards ─────────────────────────
 // Three-level flow requested by the Academic Office:
@@ -2087,7 +2290,7 @@ export function AcademicPortal({ activeModule, user }: Props) {
     case 'academic-students': return <StudentsView user={user} />;
     case 'timetable': return <TimetableView user={user} />;
     case 'academic-datesheet': return <DateSheetView user={user} />;
-    case 'academic-tests': return <TestsView user={user} />;
+    case 'academic-tests': return <ExamsView user={user} />;
     case 'report-cards': return <ReportCardsView user={user} />;
     default: return (
       <div className="space-y-6">

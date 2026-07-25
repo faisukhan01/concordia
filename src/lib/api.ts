@@ -179,6 +179,15 @@ export const api = {
     return request<any>(q.toString() ? `results?${q.toString()}` : 'results');
   },
   postResults: (body: any) => request<any>('results', { method: 'POST', body: JSON.stringify(body) }),
+  // exams — scheduled test/assessment sessions created by the Academic Office
+  getExams: (params?: { branchId?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.branchId) q.set('branchId', params.branchId);
+    return request<any[]>(q.toString() ? `exams?${q.toString()}` : 'exams');
+  },
+  createExam: (body: { name: string; type?: string }) =>
+    request<any>('exams', { method: 'POST', body: JSON.stringify(body) }),
+  deleteExam: (id: string) => request<any>(`exams/${id}`, { method: 'DELETE' }),
   // fees
   getFees: (params?: { studentId?: string; branchId?: string; instituteId?: string }) => {
     const q = new URLSearchParams();

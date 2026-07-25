@@ -1725,6 +1725,63 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
       return NextResponse.json(entries);
     }
 
+    // ===================== EXAMS (Academic Office / Admin) =====================
+    // Exams are scheduled test/assessment sessions (Monthly Test 1, Midterm,
+    // Final, Quiz, …) created by the Academic Office. Names are unique per
+    // branch so teachers, date sheets, and result cards can reference them.
+    if (method === 'GET' && path === 'exams') {
+      const user = await requireAuth(req);
+      const { branchId } = query;
+      const brId = branchId || user.branchId;
+      if (!brId) return NextResponse.json([]);
+      const r = await db.execute({
+        sql: 'SELECT id, branchId, instituteId, name, type, createdBy, createdAt FROM exams WHERE branchId = ? ORDER BY createdAt DESC',
+        args: [brId],
+      });
+      return NextResponse.json(r.rows);
+    }
+
+    if (method === 'POST' && path === 'exams') {
+      const user = await requireAuth(req);
+      requireRole(user, 'academic', 'admin', 'branch-manager', 'institute-admin');
+      const { name, type } = body || {};
+      const cleanName = (name || '').toString().trim();
+      if (!cleanName) return NextResponse.json({ error: 'Exam name is required' }, { status: 400 });
+      const brId = user.branchId;
+      if (!brId) return NextResponse.json({ error: 'No branch assigned to your account' }, { status: 400 });
+      // Duplicate-name check (case-insensitive) within the same branch.
+      const dup = await db.execute({
+        sql: "SELECT id, name FROM exams WHERE branchId = ? AND LOWER(name) = LOWER(?)",
+        args: [brId, cleanName],
+      });
+      if (dup.rows.length > 0) {
+        return NextResponse.json(
+          { error: `An exam named "${cleanName}" already exists. Please choose a different name.` },
+          { status: 409 },
+        );
+      }
+      const id = nextId('EX');
+      await db.execute({
+        sql: 'INSERT INTO exams (id, branchId, instituteId, name, type, createdBy) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [id, brId, user.instituteId || null, cleanName, type || 'Monthly Test', user.id],
+      });
+      return NextResponse.json({ id, success: true, name: cleanName, type: type || 'Monthly Test' }, { status: 201 });
+    }
+
+    if (method === 'DELETE' && path.startsWith('exams/')) {
+      const user = await requireAuth(req);
+      requireRole(user, 'academic', 'admin', 'branch-manager', 'institute-admin');
+      const examId = path.split('/')[1];
+      if (!examId) return NextResponse.json({ error: 'Exam id required' }, { status: 400 });
+      const brId = user.branchId;
+      // Scope to caller's branch (defence in depth).
+      await db.execute({
+        sql: 'DELETE FROM exams WHERE id = ? AND branchId = ?',
+        args: [examId, brId],
+      });
+      return NextResponse.json({ success: true });
+    }
+
     // ===================== FEE STRUCTURE (Branch Manager) =====================
     if (method === 'GET' && path === 'fee-structure') {
       const user = await requireAuth(req);

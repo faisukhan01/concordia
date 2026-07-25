@@ -74,6 +74,10 @@ const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS timetable (id TEXT PRIMARY KEY, branchId TEXT NOT NULL, classId TEXT, className TEXT, section TEXT DEFAULT 'A', day TEXT NOT NULL, period INTEGER NOT NULL, startTime TEXT, endTime TEXT, subject TEXT, teacherId TEXT, teacherName TEXT, roomId TEXT, roomName TEXT, createdAt TEXT DEFAULT (datetime('now')))`,
   `CREATE TABLE IF NOT EXISTS report_cards (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, studentName TEXT, class TEXT, section TEXT DEFAULT 'A', branchId TEXT, instituteId TEXT, term TEXT NOT NULL, examName TEXT, totalMarks INTEGER DEFAULT 0, obtainedMarks INTEGER DEFAULT 0, percentage REAL DEFAULT 0, grade TEXT, remarks TEXT, generatedBy TEXT, generatedAt TEXT DEFAULT (datetime('now')))`,
   `CREATE TABLE IF NOT EXISTS misc_charges (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, studentName TEXT, branchId TEXT, instituteId TEXT, type TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, description TEXT, createdBy TEXT, createdAt TEXT DEFAULT (datetime('now')))`,
+  // Exams scheduled by the Academic Office (Monthly Test 1, Midterm, Final, …).
+  // Each branch can have many exams; names must be unique per branch so
+  // teachers, date sheets, and result cards can reference them unambiguously.
+  `CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, branchId TEXT NOT NULL, instituteId TEXT, name TEXT NOT NULL, type TEXT DEFAULT 'Monthly Test', createdBy TEXT, createdAt TEXT DEFAULT (datetime('now')))`,
   // NOTE: legacy tables (diary, sms_log, complaints, library_books,
   // transport_routes, course_materials, royalty_settings, royalty_invoices)
   // are intentionally NOT created here — they are unused by the Concordia
@@ -114,6 +118,8 @@ const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_report_cards_branchId ON report_cards(branchId)`,
   `CREATE INDEX IF NOT EXISTS idx_misc_charges_studentId ON misc_charges(studentId)`,
   `CREATE INDEX IF NOT EXISTS idx_misc_charges_branchId ON misc_charges(branchId)`,
+  `CREATE INDEX IF NOT EXISTS idx_exams_branchId ON exams(branchId)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_exams_branch_name ON exams(branchId, name)`,
   `CREATE INDEX IF NOT EXISTS idx_teacher_salaries_teacherId ON teacher_salaries(teacherId)`,
   `CREATE INDEX IF NOT EXISTS idx_salary_payments_teacherId ON salary_payments(teacherId)`,
   `CREATE INDEX IF NOT EXISTS idx_events_branchId ON events(branchId)`,
