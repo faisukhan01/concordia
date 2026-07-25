@@ -1698,18 +1698,26 @@ export async function handleApiRequest(method: string, pathSegments: string[], r
 
     if (method === 'GET' && path === 'results') {
       const user = await requireAuth(req);
-      const { courseId, studentId } = query;
+      const { courseId, studentId, teacherId, branchId, exam } = query;
       let sql = 'SELECT * FROM results WHERE 1=1';
       let args: any[] = [];
+      // Scope to the caller's branch by default (defence in depth — academics
+      // / teachers only ever see their own branch's results). An explicit
+      // branchId query is honoured only if it matches the caller's branch.
+      const brId = branchId || user.branchId;
+      if (brId) { sql += ' AND branchId = ?'; args.push(brId); }
       if (courseId) { sql += ' AND courseId = ?'; args.push(courseId); }
-      sql += ' ORDER BY date DESC LIMIT 50';
+      if (teacherId) { sql += ' AND teacherId = ?'; args.push(teacherId); }
+      if (exam) { sql += ' AND exam = ?'; args.push(exam); }
+      sql += ' ORDER BY date DESC LIMIT 500';
       const r = await db.execute({ sql, args });
       const entries: any[] = [];
       for (const rec of r.rows as any[]) {
-        const records = JSON.parse(rec.records);
+        let records: any[] = [];
+        try { records = JSON.parse(rec.records); } catch { records = []; }
         if (studentId) {
           const entry = records.find((e: any) => e.studentId === studentId);
-          if (entry) entries.push({ id: rec.id, exam: rec.exam, courseId: rec.courseId, totalMarks: rec.totalMarks, marks: entry.marks, grade: entry.grade, date: rec.date });
+          if (entry) entries.push({ id: rec.id, exam: rec.exam, courseId: rec.courseId, classId: rec.classId, totalMarks: rec.totalMarks, marks: entry.marks, grade: entry.grade, date: rec.date });
         } else {
           entries.push({ ...rec, records });
         }

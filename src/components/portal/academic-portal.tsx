@@ -60,7 +60,7 @@ import {
   Users, GraduationCap, BookOpen, Calendar, FileText, Award,
   Megaphone, CalendarDays, ClipboardList, Loader2, Search, Copy, Check,
   Bell, Plus, Lock, AlertCircle, TrendingUp, CheckCircle2, ChevronRight, Eye,
-  UserPlus, UserMinus, Trash2,
+  UserPlus, UserMinus, Trash2, Download,
 } from 'lucide-react';
 
 type Props = { activeModule: string; user: any };
@@ -162,6 +162,7 @@ const inputCls = 'h-10 rounded-lg border border-gray-200 bg-white text-sm text-g
 
 const btnPrimary = 'bg-[#F26522] hover:bg-[#D4541E] text-white rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-60';
 const btnSecondary = 'border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg h-9 px-4 text-sm font-medium inline-flex items-center gap-1.5 transition-colors';
+const btnGhost = 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg h-9 px-3 text-sm font-medium inline-flex items-center gap-1.5 transition-colors';
 
 const fmtDate = (iso?: string) => {
   if (!iso) return '—';
@@ -1068,186 +1069,423 @@ function TestsView({ user }: { user: any }) {
   );
 }
 
-// ───────────────────────── Review Marks ─────────────────────────
-function ResultsView({ user }: { user: any }) {
-  const [data, setData] = useState<any[]>([]);
+// ───────────────────────── Result Cards ─────────────────────────
+// Three-level flow requested by the Academic Office:
+//   1. CLASS grid  — every class in the branch (FSc Med, ICS, Grade 10, …).
+//   2. TEST grid   — distinct tests (Monthly Test 1, Monthly Test 2, …) that
+//                    have at least one teacher-submitted mark for that class.
+//   3. STUDENT table — every student in the class as a ROW, with one column
+//                      per subject (teacher-submitted marks), plus a roll #,
+//                      father name, father contact, total obtained, %, grade,
+//                      and a per-row "Download Result Card" PDF button.
+//
+// Teachers enter + lock subject-wise marks in their portal (api.postResults).
+// Each `results` row = one teacher's submission for one (exam, class, course).
+// We aggregate those rows here to build the class-wide table per test.
+
+function gradeFromPct(pct: number | null | undefined): string {
+  if (pct == null || isNaN(pct)) return '—';
+  if (pct >= 90) return 'A+';
+  if (pct >= 80) return 'A';
+  if (pct >= 70) return 'B';
+  if (pct >= 60) return 'C';
+  if (pct >= 50) return 'D';
+  if (pct >= 40) return 'E';
+  return 'F';
+}
+
+function ReportCardsView({ user }: { user: any }) {
+  const [classes, setClasses] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selExam, setSelExam] = useState('');
 
-  useEffect(() => {
-    api.getResults({}).then(d => {
-      const all = Array.isArray(d) ? d : [];
-      setData(all);
-      if (all[0]?.exam) setSelExam(all[0].exam);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+  // Drill-down state: null = class grid; string = open test grid for classId;
+  // { classId, exam } = open student table for that class+test.
+  const [openClassId, setOpenClassId] = useState<string | null>(null);
+  const [openExam, setOpenExam] = useState<string | null>(null);
 
-  const exams = Array.from(new Set(data.map(r => r.exam).filter(Boolean)));
-  const filtered = selExam ? data.filter(r => r.exam === selExam) : data;
+  // Per-row PDF generation tracking (studentId → generating).
+  const [pdfBusy, setPdfBusy] = useState<Record<string, boolean>>({});
 
-  return (
-    <div className="space-y-6">
-      <PageHeader title="Review Marks" subtitle="Review marks submitted by teachers for each test." />
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-xs font-semibold text-gray-700">Test:</span>
-          <Select value={selExam} onValueChange={setSelExam}>
-            <SelectTrigger className="w-[240px] h-9 rounded-lg border-gray-200"><SelectValue placeholder="Select test" /></SelectTrigger>
-            <SelectContent>
-              {exams.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-            </SelectContent>
-          </Select>
+  const load = useCallback(() => {
+    setLoading(true);
+    const brId = user?.branchId;
+    Promise.all([
+      api.getClasses(brId).catch(() => []),
+      api.platformUsers({ role: 'student', branchId: brId }).catch(() => []),
+      api.getCourses({ branchId: brId }).catch(() => []),
+      api.getResults({ branchId: brId }).catch(() => []),
+    ]).then(([c, s, co, r]) => {
+      setClasses(Array.isArray(c) ? c : []);
+      setStudents(Array.isArray(s) ? s : []);
+      setCourses(Array.isArray(co) ? co : []);
+      setResults(Array.isArray(r) ? r : []);
+    }).finally(() => setLoading(false));
+  }, [user?.branchId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Students enrolled in a class (matched by name + section, same as ClassesView).
+  const studentsInClass = (cls: any) =>
+    students.filter((s) => s.class === cls.name && s.section === cls.section);
+
+  // Distinct exams that have at least one result row touching this class's
+  // students. Falls back to the result row's classId when set.
+  const examsForClass = (cls: any) => {
+    const clsStudents = studentsInClass(cls);
+    const studentIds = new Set(clsStudents.map((s) => s.id));
+    const exams = new Set<string>();
+    results.forEach((r) => {
+      if (r.classId && r.classId === cls.id) { exams.add(r.exam); return; }
+      // No classId on the row → check if any record references our students.
+      try {
+        const recs = typeof r.records === 'string' ? JSON.parse(r.records) : (r.records || []);
+        if (Array.isArray(recs) && recs.some((rec: any) => studentIds.has(rec.studentId))) {
+          exams.add(r.exam);
+        }
+      } catch { /* skip */ }
+    });
+    return Array.from(exams).sort();
+  };
+
+  // Build the subject-column matrix for a class + exam.
+  // Returns { subjects: [{courseId, name, total}], matrix: { studentId → { courseId → obtained } } }
+  const buildMatrix = (cls: any, exam: string) => {
+    const clsStudents = studentsInClass(cls);
+    const studentIds = new Set(clsStudents.map((s) => s.id));
+    // Course order = the order courses appear in results (stable).
+    const subjOrder: string[] = [];
+    const subjMap: Record<string, { courseId: string; name: string; total: number }> = {};
+    const matrix: Record<string, Record<string, number | null>> = {};
+    clsStudents.forEach((s) => { matrix[s.id] = {}; });
+
+    results.forEach((r) => {
+      if (r.exam !== exam) return;
+      // Only include rows that touch this class.
+      let touches = false;
+      if (r.classId && r.classId === cls.id) touches = true;
+      if (!touches) {
+        try {
+          const recs = typeof r.records === 'string' ? JSON.parse(r.records) : (r.records || []);
+          if (Array.isArray(recs) && recs.some((rec: any) => studentIds.has(rec.studentId))) touches = true;
+        } catch { /* skip */ }
+      }
+      if (!touches) return;
+
+      const courseId = r.courseId || 'unknown';
+      const courseName = (courses.find((c) => c.id === courseId)?.name) || r.courseId || 'Subject';
+      const total = Number(r.totalMarks) || 100;
+      if (!subjMap[courseId]) {
+        subjMap[courseId] = { courseId, name: courseName, total };
+        subjOrder.push(courseId);
+      } else {
+        // Keep the max total seen (defensive).
+        subjMap[courseId].total = Math.max(subjMap[courseId].total, total);
+      }
+      try {
+        const recs = typeof r.records === 'string' ? JSON.parse(r.records) : (r.records || []);
+        (recs as any[]).forEach((rec) => {
+          if (studentIds.has(rec.studentId)) {
+            const prev = matrix[rec.studentId][courseId];
+            const val = rec.marks != null ? Number(rec.marks) : null;
+            // If multiple teachers submitted for the same subject, keep the
+            // latest non-null value (last write wins).
+            if (prev == null || val != null) matrix[rec.studentId][courseId] = val;
+          }
+        });
+      } catch { /* skip */ }
+    });
+
+    return {
+      subjects: subjOrder.map((id) => subjMap[id]),
+      matrix,
+      clsStudents,
+    };
+  };
+
+  const computeTotals = (subjects: any[], row: Record<string, number | null>) => {
+    let obtained = 0;
+    let total = 0;
+    let entered = 0;
+    subjects.forEach((s) => {
+      const v = row[s.courseId];
+      if (v != null && !isNaN(v)) { obtained += v; entered += 1; }
+      total += s.total;
+    });
+    const pct = total > 0 ? Math.round((obtained / total) * 100) : null;
+    return { obtained, total, entered, pct, grade: gradeFromPct(pct) };
+  };
+
+  // ─── Per-row PDF download ───
+  const downloadPdf = async (cls: any, exam: string, student: any) => {
+    setPdfBusy((m) => ({ ...m, [student.id]: true }));
+    try {
+      const { buildReportCard, savePdf, gradeFromPct } = await import('@/lib/pdf-utils');
+      const { subjects, matrix } = buildMatrix(cls, exam);
+      const row = matrix[student.id] || {};
+      const { obtained, total, pct, grade } = computeTotals(subjects, row);
+      const doc = await buildReportCard({
+        instituteName: user?.instituteName || 'Concordia College',
+        branchName: user?.branchName || 'Main Campus',
+        docTitle: 'Result Card',
+        docSubtitle: exam,
+        studentName: student.name,
+        rollNo: student.rollNo || '—',
+        className: cls.name,
+        section: cls.section,
+        term: exam,
+        fatherName: student.fatherName || student.guardian || '—',
+        fatherContact: student.guardianPhone || student.fatherContact || '—',
+        totalMarks: total,
+        obtainedMarks: obtained,
+        grade,
+        position: pct != null ? `${pct}%` : '—',
+        subjects: subjects.map((s) => {
+          const v = row[s.courseId];
+          const sp = v != null && s.total > 0 ? Math.round((v / s.total) * 100) : null;
+          return { name: s.name, total: s.total, obtained: v != null ? v : 0, grade: gradeFromPct(sp) };
+        }),
+        remarks: pct == null ? 'Awaiting marks' : (pct >= 40 ? 'Promoted' : 'Needs improvement'),
+      });
+      const safeRoll = (student.rollNo || student.id || 'student').replace(/[^a-z0-9-]/gi, '-');
+      savePdf(doc, `ResultCard-${safeRoll}-${exam.replace(/\s+/g, '_')}.pdf`);
+      toast({ title: 'Result card downloaded', description: `${student.name} · ${exam}` });
+    } catch (e: any) {
+      toast({ title: 'Could not generate PDF', description: e?.message || 'Please try again.', variant: 'destructive' });
+    } finally {
+      setPdfBusy((m) => ({ ...m, [student.id]: false }));
+    }
+  };
+
+  const openClass = openClassId ? classes.find((c) => c.id === openClassId) : null;
+  const headerAccent = 'h-0.5 w-8 bg-[#F26522] mb-3';
+
+  // ─── Loading / empty shell ───
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Result Cards" subtitle="Class-wise test results, aggregated from every teacher's locked marks." />
+        <div className="rounded-xl border border-gray-200 bg-white p-5"><SkeletonTable rows={4} /></div>
+      </div>
+    );
+  }
+
+  // ─── LEVEL 3: student table for (class, exam) ───
+  if (openClass && openExam) {
+    const { subjects, matrix, clsStudents } = buildMatrix(openClass, openExam);
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title={`${openClass.name} — ${openExam}`}
+          subtitle={`Section ${openClass.section} · ${clsStudents.length} student${clsStudents.length === 1 ? '' : 's'} · ${subjects.length} subject${subjects.length === 1 ? '' : 's'}`}
+          action={
+            <button onClick={() => setOpenExam(null)} className={btnGhost}>
+              <ChevronRight className="h-4 w-4 rotate-180" /> Back to tests
+            </button>
+          }
+        />
+        <div className="rounded-xl border border-gray-200 bg-white p-0 overflow-hidden">
+          {clsStudents.length === 0 ? (
+            <div className="p-6">
+              <EmptyState icon={Award} title="No students in this class" desc="Enroll students first to generate result cards." />
+            </div>
+          ) : subjects.length === 0 ? (
+            <div className="p-6">
+              <EmptyState icon={Award} title="No marks submitted yet" desc="Once teachers lock their subject marks for this test, the class-wise result table will appear here." />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-gray-200 bg-gray-50/50">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap">Roll #</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap">Student</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap">Father / Guardian</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 whitespace-nowrap">Contact</TableHead>
+                    {subjects.map((s) => (
+                      <TableHead key={s.courseId} className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center whitespace-nowrap" title={s.name}>
+                        {s.name.length > 14 ? s.name.slice(0, 13) + '…' : s.name}
+                        <span className="block text-[9px] font-normal text-gray-400 normal-case tracking-normal">/{s.total}</span>
+                      </TableHead>
+                    ))}
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center whitespace-nowrap">Total</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center whitespace-nowrap">%</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center whitespace-nowrap">Grade</TableHead>
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-right whitespace-nowrap">Result Card</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clsStudents.map((s) => {
+                    const row = matrix[s.id] || {};
+                    const { obtained, total, pct, grade } = computeTotals(subjects, row);
+                    const busy = !!pdfBusy[s.id];
+                    return (
+                      <TableRow key={s.id} className="border-gray-100 hover:bg-gray-50">
+                        <TableCell className="text-xs text-gray-700 font-mono whitespace-nowrap">{s.rollNo || '—'}</TableCell>
+                        <TableCell className="text-sm font-medium text-gray-900 whitespace-nowrap">{s.name}</TableCell>
+                        <TableCell className="text-xs text-gray-600 whitespace-nowrap">{s.fatherName || s.guardian || '—'}</TableCell>
+                        <TableCell className="text-xs text-gray-600 font-mono whitespace-nowrap">{s.guardianPhone || s.fatherContact || '—'}</TableCell>
+                        {subjects.map((sub) => {
+                          const v = row[sub.courseId];
+                          return (
+                            <TableCell key={sub.courseId} className="text-sm text-center tabular-nums whitespace-nowrap">
+                              {v == null ? <span className="text-gray-300">—</span> : <span className={v < sub.total * 0.4 ? 'text-red-600 font-semibold' : 'text-gray-900'}>{v}</span>}
+                            </TableCell>
+                          );
+                        })}
+                        <TableCell className="text-sm text-center font-semibold text-gray-900 tabular-nums whitespace-nowrap">{obtained}<span className="text-gray-400 font-normal">/{total}</span></TableCell>
+                        <TableCell className="text-sm text-center tabular-nums font-semibold whitespace-nowrap">
+                          {pct == null ? <span className="text-gray-300">—</span> : <span className={pct < 40 ? 'text-red-600' : pct >= 80 ? 'text-emerald-600' : 'text-gray-900'}>{pct}%</span>}
+                        </TableCell>
+                        <TableCell className="text-center whitespace-nowrap">
+                          <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                            grade === 'F' ? 'bg-red-50 text-red-700 border-red-100'
+                            : grade === '—' ? 'bg-gray-50 text-gray-500 border-gray-200'
+                            : grade.startsWith('A') ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                            : 'bg-amber-50 text-amber-700 border-amber-100'
+                          }`}>{grade}</span>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <button
+                            onClick={() => downloadPdf(openClass, openExam!, s)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            {busy ? 'Generating…' : 'Download'}
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
-        {loading ? (
-          <SkeletonTable rows={4} />
-        ) : filtered.length === 0 ? (
-          <EmptyState icon={ClipboardList} title="No marks submitted yet" desc="Marks submitted by teachers will appear here for review." />
+        <p className="text-xs text-gray-400">
+          Marks shown per subject are entered and locked by each subject's teacher from their portal. A dash (—) means marks haven't been submitted yet for that student.
+        </p>
+      </div>
+    );
+  }
+
+  // ─── LEVEL 2: test grid for a class ───
+  if (openClass) {
+    const exams = examsForClass(openClass);
+    const clsStudents = studentsInClass(openClass);
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title={`${openClass.name} — Section ${openClass.section}`}
+          subtitle={`${clsStudents.length} student${clsStudents.length === 1 ? '' : 's'} · ${exams.length} test${exams.length === 1 ? '' : 's'} with submitted marks`}
+          action={
+            <button onClick={() => setOpenClassId(null)} className={btnGhost}>
+              <ChevronRight className="h-4 w-4 rotate-180" /> Back to classes
+            </button>
+          }
+        />
+        {exams.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
+            <EmptyState icon={FileText} title="No tests submitted yet" desc="When teachers lock their subject marks for a test, the test card will appear here for you to open and review class-wise." />
+          </div>
         ) : (
-          <div className="space-y-4">
-            {filtered.map((r, i) => {
-              let recs: any[] = [];
-              try { recs = r.records ? (typeof r.records === 'string' ? JSON.parse(r.records) : r.records) : []; } catch {}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {exams.map((exam) => {
+              const { subjects, matrix } = buildMatrix(openClass, exam);
+              const entered = clsStudents.filter((s) => Object.keys(matrix[s.id] || {}).length > 0).length;
+              const avgPct = (() => {
+                const pcts = clsStudents.map((s) => computeTotals(subjects, matrix[s.id] || {}).pct).filter((p): p is number => p != null);
+                return pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+              })();
               return (
-                <div key={r.id || i} className="rounded-lg border border-gray-100 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">{r.exam}</div>
-                      <div className="text-xs text-gray-500">Total marks: {r.totalMarks} · {recs.length} students</div>
+                <button
+                  key={exam}
+                  onClick={() => setOpenExam(exam)}
+                  className="group text-left rounded-xl border border-gray-200 bg-white p-5 hover:border-[#F26522]/40 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F26522]/10 text-[#F26522]">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">{exam}</div>
+                        <div className="text-xs text-gray-500">{subjects.length} subject{subjects.length === 1 ? '' : 's'} · {entered}/{clsStudents.length} students</div>
+                      </div>
                     </div>
+                    <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-[#F26522] transition-colors" />
                   </div>
-                  {recs.length > 0 && (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-gray-200">
-                          <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Roll No</TableHead>
-                          <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Name</TableHead>
-                          <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">Obtained</TableHead>
-                          <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Grade</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {recs.map((s, j) => (
-                          <TableRow key={j} className="border-gray-100">
-                            <TableCell className="text-sm text-gray-700 font-mono">{s.studentId || '—'}</TableCell>
-                            <TableCell className="text-sm font-medium text-gray-900">{s.studentName}</TableCell>
-                            <TableCell className="text-sm text-gray-900 text-right tabular-nums font-semibold">{s.obtained}/{r.totalMarks}</TableCell>
-                            <TableCell><span className="inline-flex items-center rounded-md border bg-gray-100 text-gray-600 border-gray-200 px-2 py-0.5 text-[11px] font-medium">{s.grade || '—'}</span></TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </div>
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Class Average</span>
+                    <span className={`text-lg font-bold tabular-nums ${avgPct == null ? 'text-gray-300' : avgPct < 40 ? 'text-red-600' : avgPct >= 80 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                      {avgPct == null ? '—' : `${avgPct}%`}
+                    </span>
+                  </div>
+                </button>
               );
             })}
           </div>
         )}
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// ───────────────────────── Result Cards ─────────────────────────
-function ReportCardsView({ user }: { user: any }) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selExam, setSelExam] = useState('');
-
-  useEffect(() => {
-    api.getResults({}).then(d => {
-      const all = Array.isArray(d) ? d : [];
-      setData(all);
-      if (all[0]?.exam) setSelExam(all[0].exam);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  const exams = Array.from(new Set(data.map(r => r.exam).filter(Boolean)));
-  const filtered = selExam ? data.filter(r => r.exam === selExam) : data;
-
-  // Aggregate by student across subjects
-  const byStudent: Record<string, { name: string; subjects: { subject: string; obtained: number; total: number; grade: string }[] }> = {};
-  filtered.forEach(r => {
-    let recs: any[] = [];
-    try { recs = r.records ? (typeof r.records === 'string' ? JSON.parse(r.records) : r.records) : []; } catch {}
-    recs.forEach(s => {
-      const id = s.studentId || s.studentName;
-      if (!byStudent[id]) byStudent[id] = { name: s.studentName, subjects: [] };
-      byStudent[id].subjects.push({ subject: r.courseName || r.courseId || 'Subject', obtained: s.obtained, total: r.totalMarks, grade: s.grade || '—' });
-    });
-  });
-
-  const publish = () => {
-    toast({ title: 'Result card published', description: `${selExam || 'Test'} result is now visible to students.` });
-  };
-
+  // ─── LEVEL 1: class grid (default) ───
   return (
     <div className="space-y-6">
       <PageHeader
         title="Result Cards"
-        subtitle="Generate and publish result cards for students."
-        action={Object.keys(byStudent).length > 0 ? <button onClick={publish} className={btnPrimary}><CheckCircle2 className="h-4 w-4" /> Publish Result</button> : undefined}
+        subtitle="Open a class to view test-wise results. Each teacher locks their subject's marks; the academic office reviews the class-wise table and downloads result cards."
       />
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-xs font-semibold text-gray-700">Test:</span>
-          <Select value={selExam} onValueChange={setSelExam}>
-            <SelectTrigger className="w-[240px] h-9 rounded-lg border-gray-200"><SelectValue placeholder="Select test" /></SelectTrigger>
-            <SelectContent>
-              {exams.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      {classes.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          <EmptyState icon={Award} title="No classes yet" desc="Create classes first — results are organised class-wise." />
         </div>
-        {loading ? (
-          <SkeletonTable rows={4} />
-        ) : Object.keys(byStudent).length === 0 ? (
-          <EmptyState icon={Award} title="No results to generate" desc="Once teachers submit marks, result cards can be generated here." />
-        ) : (
-          <div className="space-y-4">
-            {Object.entries(byStudent).map(([id, s]) => {
-              const total = s.subjects.reduce((a, b) => a + b.obtained, 0);
-              const max = s.subjects.reduce((a, b) => a + b.total, 0);
-              const pct = max > 0 ? Math.round((total / max) * 100) : 0;
-              return (
-                <div key={id} className="rounded-lg border border-gray-100 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">{s.name}</div>
-                      <div className="text-xs text-gray-500">ID: {id}</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {classes.map((cls) => {
+            const clsStudents = studentsInClass(cls);
+            const exams = examsForClass(cls);
+            return (
+              <button
+                key={cls.id}
+                onClick={() => setOpenClassId(cls.id)}
+                className="group text-left rounded-xl border border-gray-200 bg-white p-5 hover:border-[#F26522]/40 hover:shadow-sm transition-all"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#F26522]/10 text-[#F26522] shrink-0">
+                      <BookOpen className="h-5 w-5" />
                     </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-gray-900">{pct}%</div>
-                      <div className="text-xs text-gray-500">{total}/{max}</div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{cls.name}</div>
+                      <div className="text-xs text-gray-500">Section {cls.section}</div>
                     </div>
                   </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-gray-200">
-                        <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Subject</TableHead>
-                        <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400 text-right">Obtained</TableHead>
-                        <TableHead className="text-xs font-medium uppercase tracking-wider text-gray-400">Grade</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {s.subjects.map((sub, j) => (
-                        <TableRow key={j} className="border-gray-100">
-                          <TableCell className="text-sm font-medium text-gray-900">{sub.subject}</TableCell>
-                          <TableCell className="text-sm text-gray-700 text-right tabular-nums">{sub.obtained}/{sub.total}</TableCell>
-                          <TableCell><span className="inline-flex items-center rounded-md border bg-gray-100 text-gray-600 border-gray-200 px-2 py-0.5 text-[11px] font-medium">{sub.grade}</span></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-[#F26522] transition-colors shrink-0" />
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Students</div>
+                    <div className="text-lg font-bold text-gray-900 tabular-nums">{clsStudents.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Tests</div>
+                    <div className="text-lg font-bold text-gray-900 tabular-nums">{exams.length}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ───────────────────────── Classes View ─────────────────────────
 type ClassRow = { id: string; name: string; section: string; branchId?: string } & Record<string, any>;
@@ -1850,7 +2088,6 @@ export function AcademicPortal({ activeModule, user }: Props) {
     case 'timetable': return <TimetableView user={user} />;
     case 'academic-datesheet': return <DateSheetView user={user} />;
     case 'academic-tests': return <TestsView user={user} />;
-    case 'results': return <ResultsView user={user} />;
     case 'report-cards': return <ReportCardsView user={user} />;
     default: return (
       <div className="space-y-6">

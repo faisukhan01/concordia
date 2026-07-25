@@ -785,12 +785,26 @@ export interface ReportCardData extends PdfMeta {
   section?: string;
   term?: string;
   examMonth?: string;
+  fatherName?: string;
+  fatherContact?: string;
   totalMarks?: number;
   obtainedMarks?: number;
   grade?: string;
   position?: string;
   subjects: { name: string; total: number; obtained: number; grade: string }[];
   remarks?: string;
+}
+
+/** Convert a percentage to a letter grade (Concordia grading scale). */
+export function gradeFromPct(pct: number | null | undefined): string {
+  if (pct == null || isNaN(pct)) return '—';
+  if (pct >= 90) return 'A+';
+  if (pct >= 80) return 'A';
+  if (pct >= 70) return 'B';
+  if (pct >= 60) return 'C';
+  if (pct >= 50) return 'D';
+  if (pct >= 40) return 'E';
+  return 'F';
 }
 
 /**
@@ -815,6 +829,8 @@ export async function buildReportCard(data: ReportCardData): Promise<jsPDF> {
   drawInfoGrid(ctx, [
     ['Student Name', data.studentName],
     ['Roll Number', data.rollNo],
+    ['Father / Guardian', data.fatherName || '—'],
+    ['Father Contact', data.fatherContact || '—'],
     ['Class', data.className ? `${data.className}${data.section ? ' · ' + data.section : ''}` : '—'],
     ['Term / Exam', data.term || data.examMonth || '—'],
   ]);
@@ -845,11 +861,13 @@ export async function buildReportCard(data: ReportCardData): Promise<jsPDF> {
     ['Remarks', data.remarks || '—'],
   ]);
 
+  // Pass/Fail status — F grade is a fail, anything else (A+ to E) is a pass.
+  const isPass = data.grade && data.grade !== 'F' && data.grade !== '—';
   drawStatusPill(
     ctx,
-    data.grade ? `Grade ${data.grade}` : 'Result',
-    'confirmed',
-    pct != null ? `${pct}% · ${data.obtainedMarks}/${data.totalMarks}` : undefined,
+    isPass ? 'PASSED' : (data.grade === 'F' ? 'FAILED' : 'Result'),
+    isPass ? 'confirmed' : 'pending',
+    [data.grade ? `Grade ${data.grade}` : '', pct != null ? `${pct}% · ${data.obtainedMarks}/${data.totalMarks}` : ''].filter(Boolean).join(' · ') || undefined,
   );
 
   drawFooter(ctx);

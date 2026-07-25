@@ -125,7 +125,6 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'academic:timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
       { id: 'academic:academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'academic:academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
-      { id: 'academic:results', name: 'Review Marks', icon: ClipboardList, color: SECONDARY },
       { id: 'academic:report-cards', name: 'Result Cards', icon: Award, color: PRIMARY },
     ]},
     { group: 'Account', flat: true, items: [
@@ -186,7 +185,6 @@ export const ROLE_MODULES: RoleModules = {
       { id: 'timetable', name: 'Timetable', icon: Calendar, color: SECONDARY },
       { id: 'academic-datesheet', name: 'Date Sheets', icon: CalendarDays, color: SECONDARY },
       { id: 'academic-tests', name: 'Monthly Tests', icon: FileText, color: PRIMARY },
-      { id: 'results', name: 'Review Marks', icon: ClipboardList, color: SECONDARY },
       { id: 'report-cards', name: 'Result Cards', icon: Award, color: PRIMARY },
     ]},
     { group: 'Account', flat: true, items: [
