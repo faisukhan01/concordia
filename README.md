@@ -5,7 +5,7 @@ Built with Next.js 16, TypeScript, and Tailwind CSS 4. Single-institution
 deployment — Concordia is THE institute, with one main campus and seven
 role-based portals.
 
-**Live:** [concordia-eight.vercel.app](https://concordia-eight.vercel.app)
+**Live:** [concordiacollegecanalcampus.com](https://www.concordiacollegecanalcampus.com/)
 
 ---
 
